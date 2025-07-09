@@ -1,110 +1,79 @@
-using UnityEngine;
 using System;
+using UnityEngine;
 
-/// <summary>
-/// يمثل نابضاً بين نقطتين كتليتين، يحسب قوة هوك والتخميد،
-/// ويدعم بلاستيكية وكسر عند تجاوز العتبات.
-/// </summary>
-public class SpringLink
+namespace Physics
 {
-    // النقاط المرتبطة
-    public MassPoint A, B;
-    public MassPoint PointA => A;  // للتوافق مع SpringPhysicsCollider
-    public MassPoint PointB => B;  // للتوافق مع SpringPhysicsCollider
-
-    public float RestLength;
-    public float Stiffness = 1000f;
-    public float Damping = 50f;
-
-    // عتبات البلاستيكية (Yield) والكسر (Fracture)
-    public float YieldThreshold = 0f;
-    public float FractureThreshold = 0f;
-    public bool IsBroken = false;
-    public float Plasticity = 0.1f;
-
-    /// <summary>
-    /// حدث يُطلق عند كسر النابض.
-    /// </summary>
-    public event Action OnBroken;
-
-    /// <summary>
-    /// طاقة التشوه الحالية (½·k·x²).
-    /// </summary>
-    public float CurrentStrainEnergy
+    public class SpringLink
     {
-        get
+        public MassPoint PointA => A;
+        public MassPoint PointB => B;
+        public MassPoint A, B;
+        public float RestLength;
+        public float Stiffness = 1000f;
+        public float Damping   = 50f;
+
+        public float YieldThreshold    = 0f;   // displacement عند بداية البلاستيكية
+        public float FractureThreshold = 0f;   // displacement عند الكسر التام
+        public float Plasticity        = 0.1f; // نسبة تمدد RestLength عند البلاستيكية
+        public bool  IsBroken          = false;
+
+        public event Action OnBroken;
+
+        public SpringLink(MassPoint a, MassPoint b)
         {
-            float x = Vector3.Distance(A.Position, B.Position) - RestLength;
-            return 0.5f * Stiffness * x * x;
+            A = a; B = b;
+            RestLength = Vector3.Distance(a.Position, b.Position);
         }
-    }
 
-    /// <summary>
-    /// إنشاء نابض مع ضبط طول الراحة من المواضع الابتدائية.
-    /// </summary>
-    public SpringLink(MassPoint a, MassPoint b)
-    {
-        A = a;
-        B = b;
-        RestLength = Vector3.Distance(a.Position, b.Position);
-    }
-
-    /// <summary>
-    /// إنشاء نابض مع تحديد الصلابة والتخميد.
-    /// </summary>
-    public SpringLink(MassPoint a, MassPoint b, float stiffness, float damping)
-        : this(a, b)
-    {
-        Stiffness = stiffness;
-        Damping = damping;
-    }
-
-    /// <summary>
-    /// يحسب ويطبق قوى النوابض، ويعالج البلاستيكية والكسر.
-    /// </summary>
-    public void ApplyForces()
-    {
-        if (IsBroken) return;
-
-        Vector3 delta = A.Position - B.Position;
-        float currLen = delta.magnitude;
-        Vector3 dir = (currLen > Mathf.Epsilon) ? delta.normalized : Vector3.zero;
-
-        // قانون هوك + تخميد
-        float springForce = -Stiffness * (currLen - RestLength);
-        float dampingForce = -Damping * Vector3.Dot(A.Velocity - B.Velocity, dir);
-        Vector3 force = (springForce + dampingForce) * dir;
-
-        A.ApplyForce(force);
-        B.ApplyForce(-force);
-
-        // البلاستيكية والكسر عبر الاستدعاء الموحد
-        EvaluatePlasticAndFracture(currLen);
-    }
-
-    /// <summary>
-    /// يقيم البلاستيكية ويحدث الكسر إن لزم.
-    /// (مهم لSpringPhysicsCollider)
-    /// </summary>
-    public void EvaluatePlasticAndFracture(float currentLength)
-    {
-        float strain = Mathf.Abs(currentLength - RestLength);
-        if (YieldThreshold > 0f && strain > YieldThreshold)
-            RestLength += Plasticity * (currentLength - RestLength);
-
-        if (FractureThreshold > 0f && strain > FractureThreshold)
+        public SpringLink(MassPoint a, MassPoint b, float stiffness, float damping)
+            : this(a, b)
         {
-            IsBroken = true;
-            OnBroken?.Invoke();
+            Stiffness = stiffness;
+            Damping   = damping;
         }
-    }
 
-    /// <summary>
-    /// إعادة تهيئة النابض إلى حالته الابتدائية (قبل التكسر).
-    /// </summary>
-    public void Reset()
-    {
-        IsBroken = false;
-        RestLength = Vector3.Distance(A.Position, B.Position);
+        public void ApplyForces()
+        {
+            if (IsBroken) return;
+
+            Vector3 delta = A.Position - B.Position;
+            float currLen = delta.magnitude;
+            Vector3 dir   = (currLen > Mathf.Epsilon) ? delta.normalized : Vector3.zero;
+
+            // قانون هوك + تخميد نسبِي
+            float springForce  = -Stiffness * (currLen - RestLength);
+            float dampingForce = -Damping * Vector3.Dot(A.Velocity - B.Velocity, dir);
+            Vector3 force      = (springForce + dampingForce) * dir;
+
+            A.ApplyForce(force);
+            B.ApplyForce(-force);
+
+            // تقييم البلاستيكية والكسر
+            EvaluatePlasticAndFracture(currLen);
+        }
+
+        public void EvaluatePlasticAndFracture(float currentLength)
+        {
+            float strain = Mathf.Abs(currentLength - RestLength);
+
+            // بلاستيكية: إذا تجاوز العتبة
+            if (YieldThreshold > 0f && strain > YieldThreshold)
+            {
+                RestLength += Plasticity * (currentLength - RestLength);
+            }
+
+            // كسر تام
+            if (FractureThreshold > 0f && strain > FractureThreshold)
+            {
+                IsBroken = true;
+                OnBroken?.Invoke();
+            }
+        }
+
+        public void Reset()
+        {
+            IsBroken    = false;
+            RestLength  = Vector3.Distance(A.Position, B.Position);
+        }
     }
 }

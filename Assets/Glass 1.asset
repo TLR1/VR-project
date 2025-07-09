@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 30b8263ff4314045b78cc5c1ae3f5507, type: 3}
   m_Name: Glass 1
   m_EditorClassIdentifier: 
-  Density: 1000
+  Density: 200
   Elasticity: 0
-  Hardness: 10000
-  Brittleness: 1
-  YieldThreshold: 100000
+  Hardness: 10
+  Brittleness: 0
+  YieldThreshold: 0.001
   BreakEnergyThreshold: 100000

@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using Physics.Materials;
 
 namespace Physics
@@ -7,10 +8,11 @@ namespace Physics
     [DisallowMultipleComponent]
     public class SpringPhysicsCollider : PhysicsCollider
     {
-        /// <summary>
-        /// خاصية عامة للوصول إلى جسم النوّابض من CollisionSolver.
-        /// </summary>
+        /// <summary>جسم Mass–Spring المرتبط.</summary>
         public MassSpringBody Body { get; private set; }
+
+        // لتجنّب معالجة نابض واحد أكثر من مرة بالإطار ذاته
+        internal HashSet<SpringLink> _deformedThisFrame = new HashSet<SpringLink>();
 
         protected override void Awake()
         {
@@ -18,42 +20,86 @@ namespace Physics
             Body = GetComponent<MassSpringBody>();
         }
 
+        /// <summary>
+        /// لإيجاد أبعد نقطة داخل شبكة voxels.
+        /// </summary>
         public override Vector3 FindFurthestPoint(Vector3 direction)
         {
-            // تنفيذ خاص لإرجاع أبعد نقطة في هذا الكوليدر
-            // مثال بسيط: إرجاع مركز الجسم
-            return transform.position;
+            if (Body == null || Body.Points == null || Body.Points.Count == 0)
+                return transform.position;
+
+            // نبحث عن الـ MassPoint بأكبر قيمة dot
+            float maxDot = float.MinValue;
+            Vector3 best = transform.position;
+
+            foreach (var p in Body.Points)
+            {
+                Vector3 worldPos = p.Position;
+                float d = Vector3.Dot(worldPos, direction);
+                if (d > maxDot)
+                {
+                    maxDot = d;
+                    best = worldPos;
+                }
+            }
+
+            return best;
         }
 
         public override void OnCollision(EPAResult epaResult)
         {
-            // هنا يمكنك تمييز نوع الاستجابة حسب بيانات epaResult
-            // سنفترض دائماً تطبيق كسر
+            // هنا نستدعي HandleBreak (Break + Plastic) حسب الضغط
             HandleBreak(epaResult.Normal, epaResult.PenetrationDepth);
         }
 
         /// <summary>
-        /// يعالج كسر النوابض القريبة من نقطة التصادم.
-        /// أصبح هذا الأسلوب عاماً حتى يتم استدعاؤه من CollisionSolver.
+        /// معالجة البلاستيكيّة ثم الكسر عند الضرورة.
         /// </summary>
         public void HandleBreak(Vector3 normal, float penetration)
         {
             if (Body == null) return;
 
-            // احسب نقطة التصادم في محلي الجسم
+            // نقطة التصادم بالعالم
             Vector3 cpWorld = FindFurthestPoint(normal);
+            // نحتاج للإحداثيات المحلية للفحص
             Vector3 cpLocal = Body.transform.InverseTransformPoint(cpWorld);
+
+            // نصف قطر التأثير (يمكن جعله متغيراً إذا شئنا)
             float breakRadius = 0.3f;
 
-            // افحص كل نابض وقم بتقييم الكسر
             foreach (var s in Body.Springs)
             {
+                // نتجنّب معالجة النابض ذاته أكثر من مرة
+                if (_deformedThisFrame.Contains(s))
+                    continue;
+
+                // منتصف النابض
                 Vector3 midW = (s.PointA.Position + s.PointB.Position) * 0.5f;
                 Vector3 midL = Body.transform.InverseTransformPoint(midW);
+
+                // إن كان ضمن نصف القطر
                 if (Vector3.Distance(midL, cpLocal) <= breakRadius)
                 {
+                    // احفظ الطول قبل التقييم
                     float currLen = Vector3.Distance(s.PointA.Position, s.PointB.Position);
-                    s.EvaluatePlasticAndFracture(currLen);
+
+                    // تقييم البلاستيكية
+                    if (s.YieldThreshold > 0f && Mathf.Abs(currLen - s.RestLength) > s.YieldThreshold)
+                    {
+                        s.EvaluatePlasticAndFracture(currLen);
+                        // أشعِر deformation event
+                        OnCollisionDeform();
+                        _deformedThisFrame.Add(s);
+                    }
+
+                    // تقييم الكسر
+                    if (s.FractureThreshold > 0f && Mathf.Abs(currLen - s.RestLength) > s.FractureThreshold)
+                    {
+                        s.EvaluatePlasticAndFracture(currLen);
+                        // أشعِر break event
+                        OnCollisionBreak();
+                        _deformedThisFrame.Add(s);
+                    }
                 }
             }
 
