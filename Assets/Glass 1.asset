@@ -16,5 +16,5 @@ MonoBehaviour:
   Elasticity: 0
   Hardness: 10
   Brittleness: 0
-  YieldThreshold: 0.001
-  BreakEnergyThreshold: 100000
+  YieldThreshold: 0
+  BreakEnergyThreshold: 0

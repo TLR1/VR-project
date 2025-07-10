@@ -365,8 +365,6 @@ MonoBehaviour:
   dimensions: {x: 5, y: 5, z: 5}
   voxelSize: 5
   connectionsPerVoxel: 9
-  baseStiffness: 1000
-  baseDamping: 50
   voxelPrefab: {fileID: 0}
 --- !u!114 &160395408
 MonoBehaviour:
@@ -981,9 +979,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55ed6f3ca32546be92e0703bff470993, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  pointMass: 1
-  springStiffness: 100
-  springDamping: 5
+  defaultPointMass: 1
+  defaultSpringStiffness: 100
+  defaultSpringDamping: 5
+  defaultYieldThreshold: 0.1
+  defaultBreakThreshold: 0.3
+  defaultPlasticity: 0.05
   autoGenerateOnStart: 1
 --- !u!1 &1324116259
 GameObject:
@@ -1274,8 +1275,6 @@ MonoBehaviour:
   dimensions: {x: 10, y: 10, z: 10}
   voxelSize: 18
   connectionsPerVoxel: 18
-  baseStiffness: 1000
-  baseDamping: 50
   voxelPrefab: {fileID: 0}
 --- !u!114 &1667685036
 MonoBehaviour:
@@ -1452,9 +1451,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55ed6f3ca32546be92e0703bff470993, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  pointMass: 1
-  springStiffness: 5
-  springDamping: 10
+  defaultPointMass: 1
+  defaultSpringStiffness: 100
+  defaultSpringDamping: 5
+  defaultYieldThreshold: 0.1
+  defaultBreakThreshold: 0.3
+  defaultPlasticity: 0.05
   autoGenerateOnStart: 1
 --- !u!1 &1773589699
 GameObject:
@@ -1558,9 +1560,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55ed6f3ca32546be92e0703bff470993, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  pointMass: 10
-  springStiffness: 1
-  springDamping: 2
+  defaultPointMass: 1
+  defaultSpringStiffness: 100
+  defaultSpringDamping: 5
+  defaultYieldThreshold: 0.1
+  defaultBreakThreshold: 0.3
+  defaultPlasticity: 0.05
   autoGenerateOnStart: 1
 --- !u!114 &1773589707
 MonoBehaviour:
@@ -1659,8 +1664,6 @@ MonoBehaviour:
   dimensions: {x: 5, y: 5, z: 5}
   voxelSize: 5
   connectionsPerVoxel: 9
-  baseStiffness: 1000
-  baseDamping: 50
   voxelPrefab: {fileID: 0}
 --- !u!114 &1844274881
 MonoBehaviour:

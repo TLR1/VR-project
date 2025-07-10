@@ -1,4 +1,4 @@
-﻿using System;
+﻿// Assets/Scripts/Physics/UnifiedMassSpringGenerator.cs
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -12,74 +12,75 @@ namespace Physics
         MeshFilter mf;
         MassSpringBody body;
         MaterialHolder matHolder;
-        MaterialProfile profile;
 
         [Header("Voxel Grid (Local)")]
-        public Vector3Int dimensions = new Vector3Int(5, 5, 5);
-        public float voxelSize = 0.1f;
+        public Vector3Int dimensions   = new Vector3Int(5, 5, 5);
+        public float voxelSize         = 0.1f;
 
-        [Header("Springs (Mutual k-NN)")]
-        [Tooltip("عدد الجيران الأقرب لكل فوكسل")]
+        [Header("Springs Connectivity")]
+        [Tooltip("Number of nearest neighbors per voxel")]
         public int connectionsPerVoxel = 6;
-        [Tooltip("المعامل الأساسي للصلابة قبل التعديل بالمادة")]
-        public float baseStiffness = 1000f;
-        [Tooltip("المعامل الأساسي للتخميد قبل التعديل بالمادة")]
-        public float baseDamping = 50f;
 
-        [Header("Visualization (optional)")]
+        [Header("Visualization")]
         public GameObject voxelPrefab;
-        List<GameObject> instances = new List<GameObject>();
+        private List<GameObject> instances = new List<GameObject>();
 
         void Awake()
         {
-            mf        = GetComponent<MeshFilter>();
-            body      = GetComponent<MassSpringBody>();
-            matHolder = GetComponent<MaterialHolder>();
-            profile   = matHolder?.Profile;
-            Generate();
+            mf         = GetComponent<MeshFilter>();
+            body       = GetComponent<MassSpringBody>();
+            matHolder  = GetComponent<MaterialHolder>();
+
+            GenerateMassSpringNetwork();
         }
 
-        void Generate()
+        void GenerateMassSpringNetwork()
         {
             var mesh = mf.sharedMesh;
             if (mesh == null) return;
 
-            // نظّف النقاط والنوابض
+            // نظف القوائم
             body.Points.Clear();
             body.Springs.Clear();
             instances.ForEach(Destroy);
             instances.Clear();
 
-            // 1) surface voxels بناءً على رؤوس الميش
+            // اقرأ ملف المادة
+            var prof = matHolder.Profile;
+            // نوصل k و d و thresholds من material profile
+            float k    = prof.Stiffness;
+            float d    = prof.Damping;
+            float yTh  = prof.YieldThreshold;
+            float fTh  = prof.BreakThreshold;
+            float pl   = prof.Plasticity;
+
+            // 1) Generate surface voxels
             foreach (var localV in mesh.vertices.Distinct())
-                AddPoint(localV);
+                AddPoint(localV, prof);
 
-            // 2) interior voxels بالتوزيع المنتظم داخل bounds المحلّي
-            Bounds lb = mesh.bounds;
-            Vector3 min = lb.min;
-            Vector3 size = lb.size;
+            // 2) Generate interior voxels
+            var bounds = mesh.bounds;
             Vector3 step = new Vector3(
-                size.x / (dimensions.x - 1),
-                size.y / (dimensions.y - 1),
-                size.z / (dimensions.z - 1)
+                bounds.size.x / (dimensions.x - 1),
+                bounds.size.y / (dimensions.y - 1),
+                bounds.size.z / (dimensions.z - 1)
             );
-
             for (int x = 0; x < dimensions.x; x++)
-            for (int y = 0; y < dimensions.y; y++)
-            for (int z = 0; z < dimensions.z; z++)
-            {
-                Vector3 localP = min + Vector3.Scale(step, new Vector3(x, y, z));
-                if (IsInsideWinding(localP, mesh))
-                    AddPoint(localP);
-            }
+                for (int y = 0; y < dimensions.y; y++)
+                    for (int z = 0; z < dimensions.z; z++)
+                    {
+                        Vector3 localP = bounds.min + Vector3.Scale(step, new Vector3(x, y, z));
+                        if (IsInsideWinding(localP, mesh))
+                            AddPoint(localP, prof);
+                    }
 
-            // 3) ربط الفوكسل بنوابض Mutual k-NN
+            // 3) Build springs via mutual k-NN
             int n = body.Points.Count;
-            var nbrs = new List<List<int>>(n);
+            var neighbors = new List<List<int>>(n);
             for (int i = 0; i < n; i++)
             {
                 var pi = body.Points[i];
-                nbrs.Add(
+                neighbors.Add(
                     body.Points
                         .Select((p, idx) => new { idx, d2 = (p.Position - pi.Position).sqrMagnitude })
                         .Where(x => x.idx != i)
@@ -90,56 +91,42 @@ namespace Physics
                 );
             }
 
+            // أنشئ النوابض باستخدام القيم من الملف
             for (int i = 0; i < n; i++)
-            foreach (int j in nbrs[i])
-                if (j > i && nbrs[j].Contains(i))
+            {
+                foreach (int j in neighbors[i])
                 {
-                    // أنشئ النابض وادمج خصائص المادة
-                    var mpA = body.Points[i];
-                    var mpB = body.Points[j];
-                    float k = baseStiffness;
-                    float d = baseDamping;
-
-                    // 1) عدل الصلابة والتخميد حسب المادة
-                    if (profile != null)
+                    if (j > i && neighbors[j].Contains(i))
                     {
-                        k *= profile.Hardness;
-                        // نجعل التخميد يزيد مع Brittleness
-                        d *= 1f + profile.Brittleness * 5f;
+                        var spring = new SpringLink(
+                            body.Points[i],
+                            body.Points[j],
+                            k,    // stiffness
+                            d,    // damping
+                            yTh,  // yieldThreshold
+                            fTh,  // fractureThreshold
+                            pl    // plasticity
+                        );
+                        body.Springs.Add(spring);
                     }
-
-                    var spring = new SpringLink(mpA, mpB, k, d);
-
-                    // 2) عيّن حدود البلاستيكية والكسر من الطاقة
-                    if (profile != null)
-                    {
-                        // ½·k·x² = E  ⇒  x = sqrt(2E/k)
-                        spring.YieldThreshold = Mathf.Sqrt(2f * profile.YieldThreshold / spring.Stiffness);
-                        spring.FractureThreshold = Mathf.Sqrt(2f * profile.BreakEnergyThreshold / spring.Stiffness);
-                    }
-
-                    body.Springs.Add(spring);
                 }
+            }
         }
 
-        void AddPoint(Vector3 localP)
+        void AddPoint(Vector3 localP, MaterialProfile prof)
         {
             Vector3 worldP = transform.TransformPoint(localP);
             var mp = new MassPoint
             {
                 Position         = worldP,
-                PreviousPosition = worldP
+                PreviousPosition = worldP,
+                Mass             = prof.Density * Mathf.Pow(voxelSize, 3),
+                Velocity         = Vector3.zero,
+                Force            = Vector3.zero
             };
-
-            // 1) حساب كتلة النقطة بناءً على كثافة المادة وحجم الفوكسل
-            float density = profile != null ? profile.Density : 1000f;
-            float volume  = voxelSize * voxelSize * voxelSize;
-            mp.Mass = density * volume;
-
             body.Points.Add(mp);
 
-            // 2) إنشاء مجسم بصري إن وُجد prefab
-            if (voxelPrefab != null)
+            if (voxelPrefab)
             {
                 var go = Instantiate(voxelPrefab, worldP, Quaternion.identity, transform);
                 go.transform.localScale = Vector3.one * voxelSize;
@@ -149,28 +136,27 @@ namespace Physics
 
         void Update()
         {
-            // مزامنة مواقع الـ voxels البصرية مع النقاط المحسوبة
+            // حرك الفوكسلات حسب المواضع الجديدة
             int c = Mathf.Min(instances.Count, body.Points.Count);
             for (int i = 0; i < c; i++)
                 instances[i].transform.position = body.Points[i].Position;
         }
 
-        // -----------------------------
-        // دوال Winding Number (كما كانت)
-        // -----------------------------
+        // ————————————————————— Winding Number (داخل / خارج) ————————————————————— 
+
         bool IsInsideWinding(Vector3 localP, Mesh mesh)
         {
             var verts = mesh.vertices;
             var tris  = mesh.triangles;
-            double totalAngle = 0.0;
+            double total = 0.0;
             for (int t = 0; t < tris.Length; t += 3)
             {
-                Vector3 a = verts[tris[t]]     - localP;
+                Vector3 a = verts[tris[t    ]] - localP;
                 Vector3 b = verts[tris[t + 1]] - localP;
                 Vector3 c = verts[tris[t + 2]] - localP;
-                totalAngle += SolidAngle(a, b, c);
+                total += SolidAngle(a, b, c);
             }
-            return Math.Abs(totalAngle) > Math.PI;
+            return Mathf.Abs((float)total) > Mathf.PI;
         }
 
         double SolidAngle(Vector3 a, Vector3 b, Vector3 c)
@@ -181,7 +167,7 @@ namespace Physics
                        + Vector3.Dot(a, b) * lc
                        + Vector3.Dot(b, c) * la
                        + Vector3.Dot(c, a) * lb;
-            return 2.0 * Math.Atan2(num, den);
+            return 2.0 * System.Math.Atan2(num, den);
         }
     }
 }

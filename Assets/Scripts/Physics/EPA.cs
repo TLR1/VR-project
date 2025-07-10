@@ -53,6 +53,7 @@ public static class EPA {
             float dist = Vector3.Dot(p, closest.Normal);
 
             // 4) تحقق من التقارب
+
             if (dist - closest.Distance < Epsilon)
             {
                 // أحسب ContactPoint كمركز (centroid) لرؤوس الوجه

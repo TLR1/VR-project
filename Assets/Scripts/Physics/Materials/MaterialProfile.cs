@@ -1,3 +1,4 @@
+// Assets/Scripts/Physics/Materials/MaterialProfile.cs
 using UnityEngine;
 
 namespace Physics.Materials
@@ -5,26 +6,28 @@ namespace Physics.Materials
     [CreateAssetMenu(fileName = "NewMaterialProfile", menuName = "Physics/Material Profile")]
     public class MaterialProfile : ScriptableObject
     {
-        [Header("🔍 الخصائص العامة")]
-        [Tooltip("الكثافة (كغم / م³) — تؤثر على الكتلة والطاقة المنتقلة")]
+        [Header("General Properties")]
+        [Tooltip("Density (kg/m³) — affects mass")]
         public float Density = 1000f;
 
-        [Tooltip("المرونة — 0 = لا ارتداد، 1 = ارتداد مثالي")]
+        [Tooltip("Elasticity — 0 = no bounce, 1 = perfect bounce")]
         [Range(0f, 1f)]
         public float Elasticity = 0.5f;
 
-        [Tooltip("الصلابة — مقاومة الانبعاج الموضعي")]
-        public float Hardness = 50f;
+        [Tooltip("Stiffness — spring constant k")]
+        public float Stiffness = 1000f;
 
-        [Tooltip("الهشاشة — 0 = مرن تمامًا، 1 = هش جدًا")]
+        [Tooltip("Damping coefficient")]
+        public float Damping = 50f;
+
+        [Tooltip("Plastic yield threshold (displacement)")]
+        public float YieldThreshold = 0.1f;
+
+        [Tooltip("Break (fracture) threshold (displacement)")]
+        public float BreakThreshold = 0.3f;
+
+        [Tooltip("Plasticity factor (ratio of permanent stretch)")]
         [Range(0f, 1f)]
-        public float Brittleness = 0.2f;
-
-        [Header("🧪 حدود الإجهاد")]
-        [Tooltip("الطاقة اللازمة لحدوث تشوه دائم")]
-        public float YieldThreshold = 200f;
-
-        [Tooltip("الطاقة اللازمة لحدوث كسر تام")]
-        public float BreakEnergyThreshold = 500f;
+        public float Plasticity = 0.05f;
     }
 }

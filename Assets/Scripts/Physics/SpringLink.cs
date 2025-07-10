@@ -1,3 +1,4 @@
+// Assets/Scripts/Physics/SpringLink.cs
 using System;
 using UnityEngine;
 
@@ -5,75 +6,85 @@ namespace Physics
 {
     public class SpringLink
     {
-        public MassPoint PointA => A;
-        public MassPoint PointB => B;
-        public MassPoint A, B;
-        public float RestLength;
-        public float Stiffness = 1000f;
-        public float Damping   = 50f;
+        public MassPoint PointA { get; }
+        public MassPoint PointB { get; }
 
-        public float YieldThreshold    = 0f;   // displacement عند بداية البلاستيكية
-        public float FractureThreshold = 0f;   // displacement عند الكسر التام
-        public float Plasticity        = 0.1f; // نسبة تمدد RestLength عند البلاستيكية
-        public bool  IsBroken          = false;
+        public float RestLength { get; private set; }
+        public float Stiffness    { get; }
+        public float Damping      { get; }
+        public float YieldThreshold   { get; }
+        public float FractureThreshold{ get; }
+        public float Plasticity       { get; }
 
+        public bool  IsBroken { get; private set; } = false;
         public event Action OnBroken;
 
-        public SpringLink(MassPoint a, MassPoint b)
+        /// <summary>
+        /// الباني يستقبل كل الثوابت الفيزيائية من الأمامية (Generator).
+        /// </summary>
+        public SpringLink(
+            MassPoint pointA,
+            MassPoint pointB,
+            float stiffness,
+            float damping,
+            float yieldThreshold,
+            float fractureThreshold,
+            float plasticity
+        )
         {
-            A = a; B = b;
-            RestLength = Vector3.Distance(a.Position, b.Position);
-        }
+            PointA = pointA;
+            PointB = pointB;
 
-        public SpringLink(MassPoint a, MassPoint b, float stiffness, float damping)
-            : this(a, b)
-        {
-            Stiffness = stiffness;
-            Damping   = damping;
+            RestLength         = Vector3.Distance(pointA.Position, pointB.Position);
+            Stiffness          = stiffness;
+            Damping            = damping;
+            YieldThreshold     = yieldThreshold;
+            FractureThreshold  = fractureThreshold;
+            Plasticity         = plasticity;
         }
 
         public void ApplyForces()
         {
             if (IsBroken) return;
 
-            Vector3 delta = A.Position - B.Position;
+            // Hook’s law + damping
+            Vector3 delta = PointA.Position - PointB.Position;
             float currLen = delta.magnitude;
-            Vector3 dir   = (currLen > Mathf.Epsilon) ? delta.normalized : Vector3.zero;
+            Vector3 dir   = currLen > Mathf.Epsilon ? delta.normalized : Vector3.zero;
 
-            // قانون هوك + تخميد نسبِي
             float springForce  = -Stiffness * (currLen - RestLength);
-            float dampingForce = -Damping * Vector3.Dot(A.Velocity - B.Velocity, dir);
+            float dampingForce = -Damping * Vector3.Dot(PointA.Velocity - PointB.Velocity, dir);
             Vector3 force      = (springForce + dampingForce) * dir;
 
-            A.ApplyForce(force);
-            B.ApplyForce(-force);
+            PointA.ApplyForce(force);
+            PointB.ApplyForce(-force);
 
-            // تقييم البلاستيكية والكسر
             EvaluatePlasticAndFracture(currLen);
         }
 
-        public void EvaluatePlasticAndFracture(float currentLength)
+        public void EvaluatePlasticAndFracture(float currLen)
         {
-            float strain = Mathf.Abs(currentLength - RestLength);
+            float stretch = Mathf.Abs(currLen - RestLength);
 
-            // بلاستيكية: إذا تجاوز العتبة
-            if (YieldThreshold > 0f && strain > YieldThreshold)
-            {
-                RestLength += Plasticity * (currentLength - RestLength);
-            }
+            // Plastic yield
+            if (YieldThreshold > 0f && stretch > YieldThreshold)
+                RestLength += Plasticity * (currLen - RestLength);
 
-            // كسر تام
-            if (FractureThreshold > 0f && strain > FractureThreshold)
+            // Fracture
+            if (FractureThreshold > 0f && stretch > FractureThreshold)
             {
                 IsBroken = true;
                 OnBroken?.Invoke();
             }
         }
 
+        /// <summary>
+        /// إعادة تهيئة النابض إذا أردنا إعادة المحاكاة.
+        /// </summary>
         public void Reset()
         {
-            IsBroken    = false;
-            RestLength  = Vector3.Distance(A.Position, B.Position);
+            IsBroken   = false;
+            RestLength = Vector3.Distance(PointA.Position, PointB.Position);
         }
     }
 }

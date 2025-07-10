@@ -1,3 +1,4 @@
+// Assets/Scripts/Physics/CollisionEnergy.cs
 using UnityEngine;
 using Physics.Materials;
 
@@ -10,69 +11,59 @@ namespace Physics
             MassSpringBody bodyB,
             EPAResult result)
         {
-            Debug.Log("BodyA : " + bodyA + "    -    bodyB : " + bodyB);
             if (bodyA == null || bodyB == null)
                 return CollisionEffect.Reflect;
 
-            // حساب متوسط سرعة كل جسم
-            Vector3 velocityA = AverageVelocity(bodyA);
-            Vector3 velocityB = AverageVelocity(bodyB);
+            // حساب متوسط السرعات
+            Vector3 vA = AverageVelocity(bodyA);
+            Vector3 vB = AverageVelocity(bodyB);
 
-            Vector3 relativeVelocity = velocityA - velocityB;
-            float impactSpeed = Vector3.Dot(relativeVelocity, result.Normal);
-            Debug.Log("impact speed = " + impactSpeed);
-            if (impactSpeed <= 0)
+            // سرعة تأثير على طول normal
+            Vector3 relV = vA - vB;
+            float impactSpeed = Vector3.Dot(relV, result.Normal);
+            if (impactSpeed <= 0f)
                 return CollisionEffect.Reflect;
 
-            // حساب الكتلة التقريبية لكل جسم
-            float massA = TotalMass(bodyA);
-            float massB = TotalMass(bodyB);
+            // الكتل
+            float mA = TotalMass(bodyA);
+            float mB = TotalMass(bodyB);
+            float mu = (mA * mB) / (mA + mB);
+            float KE = 0.5f * mu * impactSpeed * impactSpeed;
 
-            float reducedMass = (massA * massB) / (massA + massB);
-            float kineticEnergy = 0.5f * reducedMass * impactSpeed * impactSpeed;
-
-            // استخراج ملف المادة
-            var profileA = bodyA.GetComponent<MaterialHolder>()?.Profile;
-            var profileB = bodyB.GetComponent<MaterialHolder>()?.Profile;
-            Debug.Log($"A Material: {profileA?.name} | Elasticity: {profileA?.Elasticity}, Brittleness: {profileA?.Brittleness}");
-            Debug.Log($"B Material: {profileB?.name} | Elasticity: {profileB?.Elasticity}, Brittleness: {profileB?.Brittleness}");
-            if (profileA == null || profileB == null)
-            {
-                Debug.LogWarning("Missing MaterialProfile on one of the MassSpringBodies.");
+            // قراءة المواد
+            var profA = bodyA.GetComponent<MaterialHolder>()?.Profile;
+            var profB = bodyB.GetComponent<MaterialHolder>()?.Profile;
+            if (profA == null || profB == null)
                 return CollisionEffect.Reflect;
-            }
 
-            float breakThreshold = Mathf.Min(profileA.BreakEnergyThreshold, profileB.BreakEnergyThreshold);
-            float deformThreshold = Mathf.Min(profileA.YieldThreshold, profileB.YieldThreshold);
-            float avgElasticity = (profileA.Elasticity + profileB.Elasticity) / 2f;
+            // اختيار القيم الدنيا للعتبات
+            float breakTh  = Mathf.Min(profA.BreakThreshold, profB.BreakThreshold);
+            float deformTh = Mathf.Min(profA.YieldThreshold, profB.YieldThreshold);
+            float avgE      = (profA.Elasticity + profB.Elasticity) * 0.5f;
 
-            // اتخاذ القرار
-            if (kineticEnergy >= breakThreshold)
-                return CollisionEffect.Break;
+            // القرار
+            if (KE >= breakTh)   return CollisionEffect.Break;
+            if (KE >= deformTh)  return CollisionEffect.Deform;
 
-            if (kineticEnergy >= deformThreshold)
-                return CollisionEffect.Deform;
-
-            return avgElasticity > 0.2f ? CollisionEffect.Reflect : CollisionEffect.Deform;
+            // أقل من تشوهٍ دائم: نرتد إذا الارتداد كافٍ، وإلا نشوه خفيف
+            return avgE > 0.2f ? CollisionEffect.Reflect : CollisionEffect.Deform;
         }
 
         private static float TotalMass(MassSpringBody body)
         {
-            float total = 0f;
+            float sum = 0f;
             foreach (var p in body.Points)
-                total += p.Mass;
-            return total;
+                sum += p.Mass;
+            return sum;
         }
 
         private static Vector3 AverageVelocity(MassSpringBody body)
         {
-            if (body.Points.Count == 0)
-                return Vector3.zero;
-
-            Vector3 sum = Vector3.zero;
+            if (body.Points.Count == 0) return Vector3.zero;
+            Vector3 s = Vector3.zero;
             foreach (var p in body.Points)
-                sum += p.Velocity;
-            return sum / body.Points.Count;
+                s += p.Velocity;
+            return s / body.Points.Count;
         }
     }
 }

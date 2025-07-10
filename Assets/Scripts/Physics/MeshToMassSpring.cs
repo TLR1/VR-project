@@ -1,25 +1,33 @@
+// Assets/Scripts/Physics/MeshToMassSpring.cs
 using System.Collections.Generic;
 using UnityEngine;
-using Debug = UnityEngine.Debug;
+using Physics.Materials;
 
 namespace Physics
 {
     [RequireComponent(typeof(MeshFilter), typeof(MassSpringBody))]
     public class MeshToMassSpring : MonoBehaviour
     {
-        [Header("Mass-Spring Settings")]
-        public float pointMass = 1f;
-        public float springStiffness = 100f;
-        public float springDamping = 5f;
+        [Header("Default Particle & Spring Settings (if no MaterialHolder)")]
+        public float defaultPointMass      = 1f;
+        public float defaultSpringStiffness= 100f;
+        public float defaultSpringDamping  = 5f;
+        public float defaultYieldThreshold = 0.1f;
+        public float defaultBreakThreshold = 0.3f;
+        public float defaultPlasticity     = 0.05f;
+
+        [Header("Generation")]
         public bool autoGenerateOnStart = true;
 
         private MeshFilter meshFilter;
         private MassSpringBody springBody;
+        private MaterialHolder matHolder;
 
         private void Awake()
         {
             meshFilter = GetComponent<MeshFilter>();
             springBody = GetComponent<MassSpringBody>();
+            matHolder  = GetComponent<MaterialHolder>();
 
             if (autoGenerateOnStart)
                 GenerateMassSpringFromMesh();
@@ -42,31 +50,56 @@ namespace Physics
             springBody.Points.Clear();
             springBody.Springs.Clear();
 
-            // 1️⃣ MassPoints
-            var vertices = mesh.vertices;
-            var triangles = mesh.triangles;
-            int vCount = vertices.Length;
+            // 1️⃣ MassPoints ← نستخدم كثافة المادة لحساب الكتلة، وإلا defaultPointMass
+            float particleMass = defaultPointMass;
+            if (matHolder != null && matHolder.Profile != null)
+            {
+                // نفترض حجم وحدة 1 for simplicity
+                particleMass = matHolder.Profile.Density * 1f;
+            }
 
+            var vertices  = mesh.vertices;
+            var triangles = mesh.triangles;
+            int vCount    = vertices.Length;
+
+            // نخزن الربط من إندكس الـMesh إلى MassPoint
             var indexToPoint = new Dictionary<int, MassPoint>(vCount);
             for (int i = 0; i < vCount; i++)
             {
-                // تحويل إلى إحداثيات عالمية
                 Vector3 worldPos = transform.TransformPoint(vertices[i]);
-
-                var point = new MassPoint
+                var p = new MassPoint
                 {
-                    Position = worldPos,
+                    Position         = worldPos,
                     PreviousPosition = worldPos,
-                    Mass = pointMass,
-                    IsFixed = false
+                    Velocity         = Vector3.zero,
+                    Force            = Vector3.zero,
+                    Mass             = particleMass,
+                    IsFixed          = false
                 };
-
-                springBody.Points.Add(point);
-                indexToPoint[i] = point;
+                springBody.Points.Add(p);
+                indexToPoint[i] = p;
             }
 
-            // 2️⃣ SpringLinks من أضلاع المثلثات
+            // 2️⃣ SpringLinks ← من أضلاع المثلثات
             var added = new HashSet<(int, int)>();
+
+            // اقرأ القيم الفيزيائية من ملف المادة أو استخدم الإفتراضية
+            float k    = defaultSpringStiffness;
+            float d    = defaultSpringDamping;
+            float yTh  = defaultYieldThreshold;
+            float fTh  = defaultBreakThreshold;
+            float pl   = defaultPlasticity;
+
+            if (matHolder != null && matHolder.Profile != null)
+            {
+                var prof = matHolder.Profile;
+                k   = prof.Stiffness;
+                d   = prof.Damping;
+                yTh = prof.YieldThreshold;
+                fTh = prof.BreakThreshold;
+                pl  = prof.Plasticity;
+            }
+
             void AddSpring(int a, int b)
             {
                 int min = Mathf.Min(a, b), max = Mathf.Max(a, b);
@@ -77,18 +110,22 @@ namespace Physics
                 var pA = indexToPoint[min];
                 var pB = indexToPoint[max];
 
-                var spring = new SpringLink(pA, pB, springStiffness, springDamping);
+                var spring = new SpringLink(
+                    pA, pB,
+                    k, d,
+                    yTh, fTh, pl
+                );
                 springBody.Springs.Add(spring);
             }
 
             for (int i = 0; i < triangles.Length; i += 3)
             {
-                AddSpring(triangles[i], triangles[i + 1]);
+                AddSpring(triangles[i],     triangles[i + 1]);
                 AddSpring(triangles[i + 1], triangles[i + 2]);
                 AddSpring(triangles[i + 2], triangles[i]);
             }
 
-            Debug.Log($"✔️ Generated {springBody.Points.Count} points and {springBody.Springs.Count} springs");
+            Debug.Log($"MeshToMassSpring: Generated {springBody.Points.Count} points and {springBody.Springs.Count} springs");
         }
     }
 }
