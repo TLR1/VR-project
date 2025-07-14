@@ -29,5 +29,9 @@ namespace Physics.Materials
         [Tooltip("Plasticity factor (ratio of permanent stretch)")]
         [Range(0f, 1f)]
         public float Plasticity = 0.05f;
+        [Header("Contact Properties")]
+        [Tooltip("Coefficient of friction (0 = ice, 1 = very rough)")]
+        [Range(0f,1f)]
+        public float Friction = 0.5f;
     }
 }

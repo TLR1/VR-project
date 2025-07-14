@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: Glass
   m_EditorClassIdentifier: 
   Density: 200
-  Elasticity: 1
-  Stiffness: 1
+  Elasticity: 0
+  Stiffness: 100
   Damping: 5
-  YieldThreshold: 1
+  YieldThreshold: 0
   BreakThreshold: 0.3
-  Plasticity: 0.05
+  Plasticity: 0.49
