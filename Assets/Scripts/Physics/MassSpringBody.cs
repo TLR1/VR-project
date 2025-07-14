@@ -242,7 +242,7 @@ namespace Physics
         {
             if (Points == null || Springs == null) return;
 
-            Gizmos.color = Color.yellow;
+            Gizmos.color = Color.green;
             foreach (var p in Points)
                 Gizmos.DrawSphere(p.Position, 0.02f);
 

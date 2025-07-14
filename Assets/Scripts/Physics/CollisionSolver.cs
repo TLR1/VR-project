@@ -6,17 +6,20 @@ using Physics.Materials;
 namespace Physics
 {
     /// <summary>
-    /// يدير عملية كشف الاصطدام (GJK + EPA)، فكّ التداخل، 
+    /// يدير كشف الاصطدام (GJK + EPA)، تصحيح المواقع،
     /// وتطبيق اندفاع موزّع على Mass–Spring bodies.
-    /// أضف هذا المكوّن إلى GameObject واحد في المشهد.
+    /// بالإضافة إلى رسم نقطة التماس بصريًّا.
     /// </summary>
     public class CollisionSolver : MonoBehaviour
     {
-        private const float jMax                 = 10f;   // حد أمان للاندفاع
-        private const float restitutionThreshold = 0.2f;  // لا ارتداد إن كانت السرعة النسبية أقل
-        private const float frictionScale        = 0.5f;  // يضرب بمعامل الاحتكاك في MaterialProfile
+        private const float jMax                 = 10f;
+        private const float restitutionThreshold = 0.2f;
+        private const float frictionScale        = 0.5f;
 
         public List<PhysicsCollider> Colliders { get; } = new();
+
+        // قائمة لحفظ نقاط التماس الأخيرة لعرضها بصريًّا
+        private readonly List<Vector3> _lastContacts = new List<Vector3>();
 
         private void FixedUpdate() => SolveCollisions();
 
@@ -25,109 +28,110 @@ namespace Physics
             int n = Colliders.Count;
             if (n < 2) return;
 
-            // مسح قائمة التشوه لأي SpringPhysicsCollider
+            // نظّف تشوّهات SpringPhysicsCollider
             foreach (var spc in Colliders.OfType<SpringPhysicsCollider>())
                 spc._deformedThisFrame.Clear();
 
-            // فحص كل أزواج الكولايدرز
+            // حلقة لفحص كل زوج
             for (int i = 0; i < n - 1; i++)
+            for (int k = i + 1; k < n; k++)
             {
-                for (int k = i + 1; k < n; k++)
+                var A = Colliders[i];
+                var B = Colliders[k];
+
+                // 1) GJK
+                var gjk = RunGJK(A, B);
+                if (!gjk.Collision) continue;
+
+                // 2) EPA
+                var epa = EPA.Expand(
+                    gjk.FinalSimplex,
+                    dir => A.FindFurthestPoint(dir) - B.FindFurthestPoint(-dir)
+                );
+                if (!epa.Success) continue;
+
+                // سجل نقطة التماس
+                _lastContacts.Add(epa.ContactPoint);
+                if (_lastContacts.Count > 50)
+                    _lastContacts.RemoveAt(0);
+
+                // 3) اجمع Mass–Spring bodies
+                var bodyA = A.GetComponent<MassSpringBody>();
+                var bodyB = B.GetComponent<MassSpringBody>();
+                if (bodyA == null || bodyB == null) continue;
+
+                // 4) تصحيح الموضع
+                SplitSeparation(A, B, epa.Normal, epa.PenetrationDepth * 2.0f);
+
+                // 5) حساب وتطبيق الاندفاع
+                Vector3 rA   = epa.ContactPoint - bodyA.CenterOfMassWorld();
+                Vector3 rB   = epa.ContactPoint - bodyB.CenterOfMassWorld();
+                Vector3 vA   = bodyA.VelocityAtPointWorld(rA);
+                Vector3 vB   = bodyB.VelocityAtPointWorld(rB);
+                Vector3 vRel = vB - vA;
+                float   vRelN = Vector3.Dot(vRel, epa.Normal);
+                if (vRelN >= -restitutionThreshold) continue;
+
+                float e = 0.5f * (
+                    (A.GetComponent<MaterialHolder>()?.Profile.Elasticity ?? 0f) +
+                    (B.GetComponent<MaterialHolder>()?.Profile.Elasticity ?? 0f)
+                );
+
+                float invMassN =
+                    bodyA.InvMass + bodyB.InvMass +
+                    Vector3.Dot(
+                        epa.Normal,
+                        Vector3.Cross(bodyA.InvInertiaWorld(rA) * Vector3.Cross(rA, epa.Normal), rA) +
+                        Vector3.Cross(bodyB.InvInertiaWorld(rB) * Vector3.Cross(rB, epa.Normal), rB)
+                    );
+
+                float jn = Mathf.Clamp(
+                    -(1f + e) * vRelN / invMassN,
+                    -jMax, jMax
+                );
+
+                Vector3 impulse = jn * epa.Normal;
+
+                // 6) احتكاك كولوم
+                Vector3 tangent = vRel - vRelN * epa.Normal;
+                if (tangent.sqrMagnitude > 1e-8f)
                 {
-                    var A = Colliders[i];
-                    var B = Colliders[k];
+                    tangent.Normalize();
+                    float vRelT = Vector3.Dot(vRel, tangent);
 
-                    // 1) GJK
-                    var gjk = RunGJK(A, B);
-                    if (!gjk.Collision) continue;
-
-                    // 2) EPA
-                    var epa = EPA.Expand(
-                        gjk.FinalSimplex,
-                        dir => A.FindFurthestPoint(dir) - B.FindFurthestPoint(-dir)
-                    );
-                    if (!epa.Success) continue;
-
-                    // 3) اجمع الـ bodies
-                    var bodyA = A.GetComponent<MassSpringBody>();
-                    var bodyB = B.GetComponent<MassSpringBody>();
-                    if (bodyA == null || bodyB == null) continue;
-
-                    // 4) تصحيح الموضع (Position Correction)
-                    SplitSeparation(A, B, epa.Normal, epa.PenetrationDepth * 0.8f);
-
-                    // 5) حساب اندفاع النقطة
-                    Vector3 rA = epa.ContactPoint - bodyA.CenterOfMassWorld();
-                    Vector3 rB = epa.ContactPoint - bodyB.CenterOfMassWorld();
-
-                    Vector3 vA   = bodyA.VelocityAtPointWorld(rA);
-                    Vector3 vB   = bodyB.VelocityAtPointWorld(rB);
-                    Vector3 vRel = vB - vA;
-                    float   vRelN = Vector3.Dot(vRel, epa.Normal);
-
-                    if (vRelN >= -restitutionThreshold) continue;
-
-                    float e = 0.5f * (
-                        (A.GetComponent<MaterialHolder>()?.Profile.Elasticity ?? 0f) +
-                        (B.GetComponent<MaterialHolder>()?.Profile.Elasticity ?? 0f)
-                    );
-
-                    float invMassN =
+                    float invMassT =
                         bodyA.InvMass + bodyB.InvMass +
                         Vector3.Dot(
-                            epa.Normal,
-                            Vector3.Cross(bodyA.InvInertiaWorld(rA) * Vector3.Cross(rA, epa.Normal), rA) +
-                            Vector3.Cross(bodyB.InvInertiaWorld(rB) * Vector3.Cross(rB, epa.Normal), rB)
+                            tangent,
+                            Vector3.Cross(bodyA.InvInertiaWorld(rA) * Vector3.Cross(rA, tangent), rA) +
+                            Vector3.Cross(bodyB.InvInertiaWorld(rB) * Vector3.Cross(rB, tangent), rB)
                         );
 
-                    float jn = Mathf.Clamp(
-                        -(1f + e) * vRelN / invMassN,
-                        -jMax, jMax
-                    );
+                    float jt = -vRelT / invMassT;
+                    float muA = A.GetComponent<MaterialHolder>()?.Profile.Friction ?? 0.5f;
+                    float muB = B.GetComponent<MaterialHolder>()?.Profile.Friction ?? 0.5f;
+                    float mu  = frictionScale * (muA + muB);
 
-                    Vector3 impulse = jn * epa.Normal;
-
-                    // 6) إضافة احتكاك كولوم إذا وُجد
-                    Vector3 tangent = vRel - vRelN * epa.Normal;
-                    if (tangent.sqrMagnitude > 1e-8f)
-                    {
-                        tangent.Normalize();
-                        float vRelT = Vector3.Dot(vRel, tangent);
-
-                        float invMassT =
-                            bodyA.InvMass + bodyB.InvMass +
-                            Vector3.Dot(
-                                tangent,
-                                Vector3.Cross(bodyA.InvInertiaWorld(rA) * Vector3.Cross(rA, tangent), rA) +
-                                Vector3.Cross(bodyB.InvInertiaWorld(rB) * Vector3.Cross(rB, tangent), rB)
-                            );
-
-                        float jt = -vRelT / invMassT;
-
-                        float muA = A.GetComponent<MaterialHolder>()?.Profile.Friction ?? 0.5f;
-                        float muB = B.GetComponent<MaterialHolder>()?.Profile.Friction ?? 0.5f;
-                        float mu  = frictionScale * (muA + muB);
-
-                        jt = Mathf.Clamp(jt, -mu * jn, mu * jn);
-                        impulse += jt * tangent;
-                    }
-
-                    // 7) تطبيق الاندفاع موزعاً
-                    bodyA.ApplyImpulseDistributed( impulse,  epa.ContactPoint );
-                    bodyB.ApplyImpulseDistributed(-impulse, epa.ContactPoint );
-
-                    // 8) إشعار الكولايدرز
-                    A.OnCollision(epa);
-                    B.OnCollision(epa);
+                    jt = Mathf.Clamp(jt, -mu * jn, mu * jn);
+                    impulse += jt * tangent;
                 }
+
+                // 7) تطبيق الاندفاع موزّعًا
+                bodyA.ApplyImpulseDistributed( impulse,  epa.ContactPoint );
+                bodyB.ApplyImpulseDistributed(-impulse, epa.ContactPoint );
+
+                // 8) إشعار الكولايدرز
+                A.OnCollision(epa);
+                B.OnCollision(epa);
             }
 
-            // تحديث الحالة (تشوه/كسر)
+            // تحديث التشوّه/الكسر لجميع الكولايدرز
             foreach (var c in Colliders)
                 c.UpdateState();
         }
 
         #region GJK & EPA Helpers
+
         private GJKResult RunGJK(PhysicsCollider a, PhysicsCollider b)
         {
             Vector3 dir     = Vector3.forward;
@@ -151,9 +155,11 @@ namespace Physics
             Debug.LogWarning("GJK reached max iterations.");
             return new GJKResult { Collision = false };
         }
+
         #endregion
 
         #region Position Correction
+
         private void SplitSeparation(PhysicsCollider A, PhysicsCollider B, Vector3 n, float depth)
         {
             Vector3 sepA = -n * (depth * 0.5f);
@@ -174,6 +180,15 @@ namespace Physics
                 col.transform.position += offset;
             }
         }
+
         #endregion
+
+        // رسم نقاط التماس الأخيرة بصريًّا
+        private void OnDrawGizmos()
+        {
+            Gizmos.color = Color.red;
+            foreach (var p in _lastContacts)
+                Gizmos.DrawSphere(p, 0.05f);
+        }
     }
 }
