@@ -7,6 +7,9 @@ namespace Physics.Materials
     public class MaterialProfile : ScriptableObject
     {
         [Header("General Properties")]
+        [Tooltip("Total mass of the object (kg)")]
+        public float TotalMass = 1f;
+
         [Tooltip("Density (kg/m³) — affects mass")]
         public float Density = 1000f;
 

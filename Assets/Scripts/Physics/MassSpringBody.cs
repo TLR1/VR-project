@@ -1,7 +1,6 @@
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
-
+using Physics.Materials;
 namespace Physics
 {
     [RequireComponent(typeof(MeshFilter))]
@@ -10,126 +9,29 @@ namespace Physics
         public enum IntegrationType { Verlet, Euler }
 
         [Header("Particles & Springs")]
-        public List<MassPoint>  Points  = new List<MassPoint>();
-        public List<SpringLink> Springs = new List<SpringLink>();
+        public List<MassPoint>   Points  = new List<MassPoint>();
+        public List<SpringLink>  Springs = new List<SpringLink>();
 
         [Header("Simulation")]
         public IntegrationType integration = IntegrationType.Verlet;
-        public float TimeStep = 0.02f;
+        public float          TimeStep    = 0.02f;
 
         [Header("External Forces")]
-        public float  Gravity         = -9.81f;
-        public bool   enableAirDrag   = false;
-        public float  airDragFactor   = 0.1f;
-        public bool   enableWind      = false;
-        public Vector3 windForce      = Vector3.zero;
-        public Vector3 externalForce  = Vector3.zero;
+        public float  Gravity        = -9.81f;
+        public bool   enableAirDrag  = false;
+        public float  airDragFactor  = 0.1f;
+        public bool   enableWind     = false;
+        public Vector3 windForce     = Vector3.zero;
+        public Vector3 externalForce = Vector3.zero;
 
-        // ────── Internal State ──────
         private List<Vector3> _prevPositions;
         private MeshFilter    _mf;
         private Mesh          _dynamicMesh;
         private Vector3[]     _baseVertices;
 
-        private bool      _inertiaDirty = true;
-        private Matrix4x4 _invIWorld;
-
-        // ────── Properties for CollisionSolver ──────
-
-        /// <summary>
-        /// إجمالي الكتلة.
-        /// </summary>
-        public float TotalMass() => Points.Sum(p => p.Mass);
-
-        /// <summary>
-        /// معكوس الكتلة الكلية (لاحتساب الاندفاع بسرعة).
-        /// </summary>
-        public float InvMass => 1f / Mathf.Max(TotalMass(), 1e-5f);
-
-        /// <summary>
-        /// تقريب معكوس مصفوفة العطالة حول مركز الكتلة.
-        /// </summary>
-        public Matrix4x4 InvInertiaWorld(Vector3 _)
-        {
-            if (_inertiaDirty)
-            {
-                float radius = 0.1f;
-                float I = (2f / 5f) * TotalMass() * radius * radius;
-                _invIWorld    = Matrix4x4.Scale(new Vector3(1f / I, 1f / I, 1f / I));
-                _inertiaDirty = false;
-            }
-            return _invIWorld;
-        }
-
-        /// <summary>
-        /// مركز الكتلة بالإحداثيات العالمية.
-        /// </summary>
-        public Vector3 CenterOfMassWorld()
-        {
-            if (Points.Count == 0) return transform.position;
-            float m = 0f;
-            Vector3 sum = Vector3.zero;
-            foreach (var p in Points)
-            {
-                sum += p.Position * p.Mass;
-                m   += p.Mass;
-            }
-            return sum / m;
-        }
-
-        /// <summary>
-        /// تقريب السرعة عند نقطة معينة بالعالم.
-        /// </summary>
-        public Vector3 VelocityAtPointWorld(Vector3 rLocal)
-        {
-            Vector3 worldP = CenterOfMassWorld() + rLocal;
-            Vector3 v = Vector3.zero;
-            float   w = 0f;
-            foreach (var p in Points)
-            {
-                float d2 = (p.Position - worldP).sqrMagnitude + 1e-6f;
-                float wi = 1f / d2;
-                v += p.Velocity * wi;
-                w += wi;
-            }
-            return v / w;
-        }
-
-        /// <summary>
-        /// يوزع اندفاعًا موزعًا على أقرب النقاط بحسب الوزن العكسي للمسافة التربيعية.
-        /// </summary>
-        public void ApplyImpulseDistributed(Vector3 J, Vector3 contactPoint, int neighbours = 8)
-        {
-            if (J == Vector3.zero) return;
-
-            var near = Points
-                .Where(p => !p.IsFixed)
-                .OrderBy(p => (p.Position - contactPoint).sqrMagnitude)
-                .Take(neighbours)
-                .ToList();
-            if (near.Count == 0) return;
-
-            float sumW = 0f;
-            var   w    = new float[near.Count];
-            for (int i = 0; i < near.Count; i++)
-            {
-                float d2   = (near[i].Position - contactPoint).sqrMagnitude + 1e-6f;
-                w[i]       = 1f / d2;
-                sumW      += w[i];
-            }
-
-            float fFactor = 1f / Time.fixedDeltaTime;
-            for (int i = 0; i < near.Count; i++)
-                near[i].ApplyForce(J * (w[i] / sumW) * fFactor);
-        }
-
-        /// <summary>
-        /// النسخة القديمة لتطبيق الاندفاع على جميع النقاط بالتساوي.
-        /// </summary>
-        public void ApplyImpulse(Vector3 impulse, Vector3 contactPoint)
-            => ApplyImpulseDistributed(impulse, contactPoint, Points.Count);
-
-        // ────── MonoBehaviour Lifecycle ──────
+        // rigid-body state
+        private float   _inertia;
+        private Vector3 _angularVelocity = Vector3.zero;
 
         private void Awake()
         {
@@ -144,68 +46,79 @@ namespace Physics
 
         private void Start()
         {
-            // حفظ المواقع السابقة للـ Verlet
-            _prevPositions = Points.Select(p => p.Position).ToList();
+            _prevPositions = new List<Vector3>(Points.Count);
+            foreach (var p in Points)
+                _prevPositions.Add(p.Position);
+
+            // حساب عزم القصور الذاتي بدايةً حول COM
+            // توزيع الكتلة من البروفايل بالتساوي
+            var holder = GetComponent<MaterialHolder>();
+            if (holder != null && holder.Profile != null)
+            {
+                float totalMass = holder.Profile.TotalMass;
+                float massPerPoint = (Points.Count > 0) ? totalMass / Points.Count : 1f;
+                foreach (var p in Points)
+                {
+                    if (!p.IsFixed)
+                        p.Mass = massPerPoint;
+                }
+            }
+
+            _inertia = ComputeMomentOfInertia();
         }
 
         private void FixedUpdate()
         {
-            // 1) إعادة تهيئة القوى الخارجية
+            var col = GetComponent<PhysicsCollider>();
+            if (col != null && col.IsStatic)
+                return;
+            // 1) القوى الخارجية
             foreach (var p in Points)
             {
                 p.ResetForce();
                 if (p.IsFixed) continue;
-
                 p.ApplyForce(Vector3.up * Gravity * p.Mass);
                 if (enableAirDrag) p.ApplyForce(-airDragFactor * p.Velocity);
                 if (enableWind)    p.ApplyForce(windForce);
                 if (externalForce != Vector3.zero) p.ApplyForce(externalForce);
+                // if (p.Velocity.y > 0f)
+                    // Debug.Log($"[MassPoint] Point {p} is accelerating upward with Vy = {p.Velocity.y}");
+
             }
 
-            // 2) تطبيق قوى النوابض
+            // 2) قوى النوابض
             foreach (var s in Springs)
                 s.ApplyForces();
 
-            // 3) التكامل الفيزيائي
-            switch (integration)
-            {
-                case IntegrationType.Verlet:
-                    VerletStep();
-                    break;
-                case IntegrationType.Euler:
-                    EulerStep();
-                    break;
-            }
+            // 3) التكامل
+            if (integration == IntegrationType.Verlet) VerletStep();
+            else                                      EulerStep();
 
-            // 4) إزالة النوابض المنكوبة
+            // 4) إزالة النوابض المكسورة
             Springs.RemoveAll(s => s.IsBroken);
 
-            // 5) تحديث الميش لإظهار تشوه الشبكة
+            // 5) تطبيق التدوير الصلب من العزم الزاوي
+            ApplyRigidRotation();
+
+            // 6) تحديث الميش
             UpdateMeshVertices();
-
-            // 6) إعادة بناء العطالة في التحديث القادم
-            _inertiaDirty = true;
+            
         }
-
-        // ────── Integration Methods ──────
 
         private void VerletStep()
         {
             float dt2 = TimeStep * TimeStep;
             for (int i = 0; i < Points.Count; i++)
             {
-                var p    = Points[i];
+                var p = Points[i];
                 if (p.IsFixed) continue;
-
                 Vector3 acc  = p.Force / p.Mass;
                 Vector3 curr = p.Position;
                 Vector3 prev = _prevPositions[i];
                 Vector3 next = 2f * curr - prev + acc * dt2;
-
-                p.Velocity           = (next - prev) * (0.5f / TimeStep);
-                _prevPositions[i]    = curr;
-                p.Position           = next;
-                p.ResetForce(); // ينظف القوة بعد التكامل
+                p.Velocity      = (next - prev) * (0.5f / TimeStep);
+                _prevPositions[i] = curr;
+                p.Position      = next;
             }
         }
 
@@ -215,13 +128,10 @@ namespace Physics
             {
                 if (p.IsFixed) continue;
                 Vector3 acc = p.Force / p.Mass;
-                p.Velocity += acc * TimeStep;
-                p.Position += p.Velocity * TimeStep;
-                p.ResetForce();
+                p.Velocity    += acc * TimeStep;
+                p.Position    += p.Velocity * TimeStep;
             }
         }
-
-        // ────── Mesh Update ──────
 
         private void UpdateMeshVertices()
         {
@@ -237,15 +147,130 @@ namespace Physics
             _dynamicMesh.RecalculateBounds();
         }
 
+        public float TotalMass()
+        {
+            float m = 0f;
+            foreach (var p in Points) m += p.Mass;
+            return m;
+        }
+        public void ApplyLocalDamping(Vector3 center, float radius, float dampingFactor = 0.5f)
+        {
+            foreach (var p in Points)
+            {
+                if (p.IsFixed) continue;
+                float dist = Vector3.Distance(p.Position, center);
+                if (dist <= radius)
+                    p.Velocity *= (1f - dampingFactor); // تخميد سريع للسرعة
+            }
+        }
+
+        public void ApplyImpulse(Vector3 impulse, Vector3 contactPoint, float impactRadius = 2600f)
+        {
+            if (Points.Count == 0) return;
+
+            Vector3 com = ComputeCenterOfMass();
+            Vector3 totalTorque = Vector3.zero;
+
+            for (int i = 0; i < Points.Count; i++)
+            {
+                var p = Points[i];
+                if (p.IsFixed) continue;
+
+                float dist = Vector3.Distance(p.Position, contactPoint);
+                // Debug.Log($"dsit : {dist}");
+                if (dist <= impactRadius)
+                {
+                    float factor = 1f - (dist / impactRadius);
+                    Vector3 dv = (impulse * factor) / p.Mass;
+                    p.Velocity += dv;
+                    _prevPositions[i] = p.Position - p.Velocity * TimeStep;
+                    Vector3 r = p.Position - com;
+                    totalTorque += Vector3.Cross(r, dv * p.Mass);
+                }
+            }
+
+            float inertia = ComputeInertia(com);
+            _angularVelocity = (inertia > 1e-5f) ? totalTorque / inertia : Vector3.zero;
+            _angularVelocity *= 1000f;
+            Debug.Log($"angular : {_angularVelocity}   , interia    :  {inertia}    total tor : {totalTorque}");
+        }
+
+        private float ComputeInertia(Vector3 com)
+        {
+            float inertia = 0f;
+            foreach (var p in Points)
+            {
+                if (p.IsFixed) continue;
+                float r2 = (p.Position - com).sqrMagnitude;
+                inertia += p.Mass * r2;
+            }
+            return inertia;
+        }
+        private Vector3 ComputeCenterOfMass()
+        {
+            Vector3 sum = Vector3.zero;
+            float totalMass = 0f;
+            foreach (var p in Points)
+            {
+                if (p.IsFixed) continue;
+                sum += p.Position * p.Mass;
+                totalMass += p.Mass;
+            }
+            return (totalMass > 0f) ? sum / totalMass : transform.position;
+        }
+
+        private void ApplyRigidRotation()
+        {
+            if (_angularVelocity.sqrMagnitude < 1e-6f) return;
+            Vector3 com = ComputeCOMPosition();
+            float angleRad = _angularVelocity.magnitude * TimeStep;
+            float angleDeg = angleRad * Mathf.Rad2Deg;
+            Vector3 axis = _angularVelocity.normalized;
+            Quaternion dq = Quaternion.AngleAxis(angleDeg, axis);
+
+            for (int i = 0; i < Points.Count; i++)
+            {
+                var p = Points[i];
+                if (p.IsFixed) continue;
+                Vector3 r     = p.Position - com;
+                p.Position    = com + dq * r;
+                Vector3 prevR = _prevPositions[i] - com;
+                _prevPositions[i] = com + dq * prevR;
+                p.Velocity    = dq * p.Velocity;
+            }
+        }
+
+        private Vector3 ComputeCOMPosition()
+        {
+            float total = 0f;
+            Vector3 sum = Vector3.zero;
+            foreach (var p in Points)
+            {
+                sum += p.Position * p.Mass;
+                total += p.Mass;
+            }
+            return total > 0f ? sum / total : Vector3.zero;
+        }
+
+        private float ComputeMomentOfInertia()
+        {
+            Vector3 com = ComputeCOMPosition();
+            float I = 0f;
+            foreach (var p in Points)
+            {
+                Vector3 r = p.Position - com;
+                I += p.Mass * r.sqrMagnitude;
+            }
+            return I;
+        }
+
 #if UNITY_EDITOR
         private void OnDrawGizmos()
         {
             if (Points == null || Springs == null) return;
-
-            Gizmos.color = Color.green;
+            Gizmos.color = Color.red;
             foreach (var p in Points)
                 Gizmos.DrawSphere(p.Position, 0.02f);
-
             Gizmos.color = Color.cyan;
             foreach (var s in Springs)
                 Gizmos.DrawLine(s.PointA.Position, s.PointB.Position);

@@ -12,7 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 30b8263ff4314045b78cc5c1ae3f5507, type: 3}
   m_Name: Glass 1
   m_EditorClassIdentifier: 
-  Density: 100000
+  TotalMass: 20000000
+  Density: 2e+9
   Elasticity: 0
   Stiffness: 1000
   Damping: 50

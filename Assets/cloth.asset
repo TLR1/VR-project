@@ -10,13 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 30b8263ff4314045b78cc5c1ae3f5507, type: 3}
-  m_Name: Steel Sphere
+  m_Name: cloth
   m_EditorClassIdentifier: 
-  TotalMass: 5000
-  Density: 1000
+  TotalMass: 700
+  Density: 500
   Elasticity: 0
-  Stiffness: 1000
-  Damping: 5
-  YieldThreshold: 0.1
-  BreakThreshold: 0.3
-  Plasticity: 0.05
+  Stiffness: 200
+  Damping: 0.1
+  YieldThreshold: 0.05
+  BreakThreshold: 2000
+  Plasticity: 0
