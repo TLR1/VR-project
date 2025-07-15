@@ -88,10 +88,10 @@ namespace Physics
                         float rB = (B is SpringPhysicsCollider spB) ? spB.ImpactRadius : defaultImpactRadius;
 
                         bodyA.ApplyImpulse( impulse, epa.ContactPoint );
-                        bodyA.ApplyLocalDamping(epa.ContactPoint, rA, 0.9f);
+                        // bodyA.ApplyLocalDamping(epa.ContactPoint, rA, 0.9f);
 
                         bodyB.ApplyImpulse(-impulse, epa.ContactPoint );
-                        bodyB.ApplyLocalDamping(epa.ContactPoint, rB, 0.9f);
+                        // bodyB.ApplyLocalDamping(epa.ContactPoint, rB, 0.9f);
                         Debug.Log($"[Physics] vRel={vRel}, e={e}, j={j}, rawJ={rawJ}, mu={mu}");
 
                     }

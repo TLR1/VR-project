@@ -14,9 +14,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   TotalMass: 5000
   Density: 1000
-  Elasticity: 0
+  Elasticity: 0.064
   Stiffness: 1000
-  Damping: 5
+  Damping: 0
   YieldThreshold: 0.1
   BreakThreshold: 0.3
   Plasticity: 0.05
+  Friction: 0.5

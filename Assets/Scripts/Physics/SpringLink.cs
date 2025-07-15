@@ -61,8 +61,8 @@ namespace Physics
             float stretch = Mathf.Abs(currLen - RestLength);
             if (stretch > RestLength * 0.1f) // تجاوز التشوه المسموح
             {
-                if (!PointA.IsFixed) PointA.Velocity *= 0.9f;
-                if (!PointB.IsFixed) PointB.Velocity *= 0.9f;
+                if (!PointA.IsFixed) PointA.Velocity *= 0f;
+                if (!PointB.IsFixed) PointB.Velocity *= 0f;
             }
         }
 
