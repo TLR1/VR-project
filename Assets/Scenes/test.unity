@@ -343,6 +343,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fd345ef2f7ba437b9fa7feb5e9f21eb9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  lineMaterial: {fileID: 0}
   integration: 0
   TimeStep: 0.02
   Gravity: -9.81
@@ -1064,6 +1065,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fd345ef2f7ba437b9fa7feb5e9f21eb9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  lineMaterial: {fileID: 0}
   integration: 0
   TimeStep: 0.02
   Gravity: -9.81
@@ -1084,6 +1086,7 @@ GameObject:
   - component: {fileID: 1324116261}
   - component: {fileID: 1324116260}
   - component: {fileID: 1324116263}
+  - component: {fileID: 1324116264}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -1209,6 +1212,20 @@ MonoBehaviour:
     m_MipBias: 0
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
+--- !u!114 &1324116264
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1324116259}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0168de19d9e02264ab209144838d8db7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  sphere: {fileID: 160395404}
+  offset: {x: 0, y: 2, z: -5}
 --- !u!1 &1667685023
 GameObject:
   m_ObjectHideFlags: 0
@@ -1360,6 +1377,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fd345ef2f7ba437b9fa7feb5e9f21eb9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  lineMaterial: {fileID: 0}
   integration: 0
   TimeStep: 0.02
   Gravity: -9.81
@@ -1447,6 +1465,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fd345ef2f7ba437b9fa7feb5e9f21eb9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  lineMaterial: {fileID: 0}
   integration: 0
   TimeStep: 0.02
   Gravity: -9.81
@@ -1669,6 +1688,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fd345ef2f7ba437b9fa7feb5e9f21eb9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  lineMaterial: {fileID: 0}
   integration: 0
   TimeStep: 0.02
   Gravity: -9.81
@@ -1769,6 +1789,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fd345ef2f7ba437b9fa7feb5e9f21eb9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  lineMaterial: {fileID: 0}
   integration: 0
   TimeStep: 0.02
   Gravity: -9.81
@@ -2193,6 +2214,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fd345ef2f7ba437b9fa7feb5e9f21eb9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  lineMaterial: {fileID: 0}
   integration: 0
   TimeStep: 0.02
   Gravity: -9.81
@@ -2343,6 +2365,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fd345ef2f7ba437b9fa7feb5e9f21eb9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  lineMaterial: {fileID: 0}
   integration: 0
   TimeStep: 0.02
   Gravity: -9.81
@@ -2351,6 +2374,14 @@ MonoBehaviour:
   enableWind: 0
   windForce: {x: 0, y: 0, z: 0}
   externalForce: {x: 0, y: 0, z: 0}
+--- !u!33 &2046851103
+MeshFilter:
+  m_ObjectHideFlags: 8
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2046851097}
+  m_Mesh: {fileID: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
