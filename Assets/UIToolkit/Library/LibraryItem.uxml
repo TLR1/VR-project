@@ -1,0 +1,10 @@
+<!-- Assets/UIToolkit/Library/LibraryItem.uxml -->
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <!-- Wrapper يمثّل صفًّا واحدًا -->
+    <ui:VisualElement name="lib-item" class="lib-item">
+        <!-- الأيقونة -->
+        <ui:VisualElement name="icon" class="lib-icon"/>
+        <!-- النص -->
+        <ui:Label        name="label" class="lib-label" text="cube"/>
+    </ui:VisualElement>
+</ui:UXML>

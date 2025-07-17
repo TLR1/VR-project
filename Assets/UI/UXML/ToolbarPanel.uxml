@@ -1,0 +1,6 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <ui:VisualElement class="toolbar-panel" style="flex-grow: 1; flex-direction: row; justify-content: center;" />
+    <ui:Button text="Play" name="play-button" />
+    <ui:Button text="Reset scene" name="reset-button" />
+    <ui:Button text="Exit" name="exit-button" />
+</ui:UXML>

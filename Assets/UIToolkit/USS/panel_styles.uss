@@ -1,0 +1,27 @@
+﻿/* صف المكتبة كله */
+.lib-item {
+    flex-direction: row;
+    align-items: center;
+    height: 64px;
+    margin-bottom: 4px;
+    padding-left: 4px;
+}
+
+/* الأيقونة */
+.lib-icon {
+    width: 56px;
+    height: 56px;
+    background-size: cover;
+    background-position: center;
+    background-color: #555;
+    border-radius: 4px;
+    flex-shrink: 0;
+    margin-right: 6px;
+}
+
+/* التسمية */
+.lib-label {
+    color: #ddd;
+    font-size: 16px;
+    unity-font-style: bold;
+}

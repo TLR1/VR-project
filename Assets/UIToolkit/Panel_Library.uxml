@@ -1,0 +1,8 @@
+<!--  Panel_Library.uxml  (لوحة القائمة كلها) -->
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="root" class="panel-root">
+        <ui:ScrollView   name="scrollView" class="lib-scroll">
+            <!-- العناصر تُضاف بالكود إلى هذا الـcontentContainer -->
+        </ui:ScrollView>
+    </ui:VisualElement>
+</ui:UXML>

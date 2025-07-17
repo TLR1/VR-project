@@ -1,0 +1,14 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/USS/panel_styles.uss?fileID=7433441132597879392&amp;guid=e76f74db3fbe1884695e6611cd6938a1&amp;type=3#panel_styles" />
+    <ui:VisualElement class="properties-panel" style="flex-grow: 1;">
+        <ui:DropdownField label="materialDropdown" name="materialDropdown" view-data-key="materialDropdown" />
+        <ui:FloatField label="dampingField" value="42.2" name="dampingField" view-data-key="dampingField" />
+        <ui:FloatField label="yieldField" value="42.2" name="yieldField" view-data-key="yieldField" />
+        <ui:FloatField label="breakField" value="42.2" name="breakField" view-data-key="breakField" />
+        <ui:FloatField label="plasticityField" value="42.2" name="plasticityField" view-data-key="plasticityField" />
+        <ui:FloatField label="densityField" value="42.2" name="densityField" view-data-key="densityField" />
+        <ui:FloatField label="elasticityField" value="42.2" name="elasticityField" view-data-key="elasticityField" />
+        <ui:FloatField label="stiffnessField" value="42.2" name="stiffnessField" view-data-key="stiffnessField" />
+    </ui:VisualElement>
+    <ui:Button text="applyButton" name="applyButton" view-data-key="applyButton" />
+</ui:UXML>

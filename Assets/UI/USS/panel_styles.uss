@@ -1,0 +1,89 @@
+// 7/16/2025 AI-Tag
+// This was created with the help of Assistant, a Unity Artificial Intelligence product.
+
+.library-panel {
+    background-color: rgba(30, 30, 30, 0.8); /* Dark semi-transparent background */
+    border-radius: 6px;                     /* Rounded corners */
+    padding: 12px;                          /* Inner spacing */
+    margin: 8px;                            /* Outer spacing */
+    flex-grow: 1;                           /* Allow the panel to expand */
+    overflow: auto;                         /* Enable scrolling if content overflows */
+}
+// 7/16/2025 AI-Tag
+// This was created with the help of Assistant, a Unity Artificial Intelligence product.
+
+.properties-panel {
+    background-color: rgba(40, 40, 40, 0.9); /* Slightly lighter background */
+    border-radius: 6px;                      /* Rounded corners */
+    padding: 12px;                           /* Inner spacing */
+    margin: 8px;                             /* Outer spacing */
+    flex-grow: 1;                            /* Allow the panel to expand */
+    overflow: auto;                          /* Enable scrolling if content overflows */
+}
+// 7/16/2025 AI-Tag
+// This was created with the help of Assistant, a Unity Artificial Intelligence product.
+
+.toolbar-panel {
+    background-color: rgba(50, 50, 50, 0.9); /* Darker background for the toolbar */
+    border-radius: 6px;                      /* Rounded corners */
+    padding: 8px;                            /* Inner spacing */
+    margin: 8px;                             /* Outer spacing */
+    display: flex;                           /* Use flexbox for layout */
+    justify-content: center;                 /* Center-align the buttons */
+    gap: 12px;                               /* Space between buttons */
+}
+// 7/16/2025 AI-Tag
+// This was created with the help of Assistant, a Unity Artificial Intelligence product.
+
+.lib-item {
+    padding: 8px;                            /* Inner spacing */
+    margin: 4px 0;                           /* Vertical spacing between items */
+    border-radius: 4px;                      /* Rounded corners */
+    background-color: rgba(50, 50, 50, 0.8); /* Background color for items */
+    display: flex;                           /* Use flexbox for layout */
+    align-items: center;                     /* Center-align icon and text */
+    cursor: pointer;                         /* Change cursor to pointer on hover */
+}
+
+.lib-item:hover {
+    background-color: rgba(70, 70, 70, 0.9); /* Highlight on hover */
+}
+
+// 7/16/2025 AI-Tag
+// This was created with the help of Assistant, a Unity Artificial Intelligence product.
+
+.lib-icon {
+    width: 64px;                             /* Fixed width */
+    height: 64px;                            /* Fixed height */
+    background-size: cover;                  /* Scale the image to cover the element */
+    background-position: center;             /* Center the image */
+    margin-right: 8px;                       /* Space between icon and text */
+}
+// 7/16/2025 AI-Tag
+// This was created with the help of Assistant, a Unity Artificial Intelligence product.
+
+.lib-label {
+    font-size: 14px;                         /* Font size */
+    color: white;                            /* Text color */
+    flex-grow: 1;                            /* Allow the label to take remaining space */
+}
+// 7/16/2025 AI-Tag
+// This was created with the help of Assistant, a Unity Artificial Intelligence product.
+
+button {
+    background-color: rgba(60, 60, 60, 0.9); /* Button background color */
+    border-radius: 4px;                      /* Rounded corners */
+    padding: 6px 12px;                       /* Inner spacing */
+    color: white;                            /* Text color */
+    font-size: 14px;                         /* Font size */
+    border: none;                            /* Remove default border */
+    cursor: pointer;                         /* Change cursor to pointer */
+}
+
+button:hover {
+    background-color: rgba(80, 80, 80, 0.9); /* Highlight on hover */
+}
+
+button:active {
+    background-color: rgba(100, 100, 100, 0.9); /* Darker color on click */
+}

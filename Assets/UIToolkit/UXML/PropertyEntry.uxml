@@ -1,0 +1,5 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <ui:VisualElement name="entry" class="entry" style="flex-grow: 1;" />
+    <ui:Label text="Label" class="entry-label" />
+    <ui:FloatField value="42.2" name="valueField" class="entry-field" />
+</ui:UXML>
