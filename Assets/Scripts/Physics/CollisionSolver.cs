@@ -64,55 +64,56 @@ namespace Physics
                     );
                     if (!epa.Success) continue;
 
-                    // only on enter: if neither was colliding last frame
                     bool firstContact = !A.Colliding && !B.Colliding;
 
                     // restitution & relative velocity
-                    float eA = A.GetComponent<MaterialHolder>()?.Profile.Elasticity ?? 0f;
-                    float eB = B.GetComponent<MaterialHolder>()?.Profile.Elasticity ?? 0f;
-                    float e  = 0.5f * (eA + eB);
+                    float eA = A.GetComponent<MaterialHolder>()?.Profile.Elasticity ?? 0.0f;
+                    float eB = B.GetComponent<MaterialHolder>()?.Profile.Elasticity ?? 0.0f;
+                    float e = 0.5f * (eA + eB);
 
                     Vector3 vCOM_A = bodyA != null ? ComputeCOMVelocity(bodyA) : Vector3.zero;
                     Vector3 vCOM_B = bodyB != null ? ComputeCOMVelocity(bodyB) : Vector3.zero;
-                    float vRel    = Vector3.Dot(vCOM_A - vCOM_B, epa.Normal);
+                    float vRel = Vector3.Dot(vCOM_A - vCOM_B, epa.Normal);
 
-                    // apply impulse only on first contact and if bodies approach
                     Debug.Log($"vRel : {vRel}");
+
                     if (firstContact && vRel > 0f && bodyA != null && bodyB != null)
                     {
-                        
-                        float mA   = bodyA.TotalMass();
-                        float mB   = bodyB.TotalMass();
-                        float mu   = (mA * mB) / (mA + mB);
+                        float mA = bodyA.TotalMass();
+                        float mB = bodyB.TotalMass();
+                        float mu = (mA * mB) / (mA + mB);
                         float rawJ = -(1f + e) * mu * vRel;
-                        float j    = Mathf.Clamp(rawJ, -jMax, jMax);
-                        // j = 0;
+                        float j = Mathf.Clamp(rawJ, -jMax, jMax);
                         Vector3 impulse = j * epa.Normal;
 
                         float rA = (A is SpringPhysicsCollider spA) ? spA.ImpactRadius : defaultImpactRadius;
                         float rB = (B is SpringPhysicsCollider spB) ? spB.ImpactRadius : defaultImpactRadius;
 
-                        bodyA.ApplyImpulse( impulse, epa.ContactPoint );
-                        // bodyA.ApplyLocalDamping(epa.ContactPoint, rA, 0.9f);
+                        bodyA.ApplyImpulse(impulse, epa.ContactPoint);
+                        bodyA.ApplyLocalDamping(epa.ContactPoint, rA, 0.9f);
 
-                        bodyB.ApplyImpulse(-impulse, epa.ContactPoint );
-                        // bodyB.ApplyLocalDamping(epa.ContactPoint, rB, 0.9f);
+                        bodyB.ApplyImpulse(-impulse, epa.ContactPoint);
+                        bodyB.ApplyLocalDamping(epa.ContactPoint, rB, 0.9f);
+
                         Debug.Log($"[Physics] vRel={vRel}, e={e}, j={j}, rawJ={rawJ}, mu={mu}");
-
                     }
 
-                    // separation weighted by inverse mass
-                    float pd    = epa.PenetrationDepth;
+                    // --- Penetration resolution ---
+
+                    float pd = epa.PenetrationDepth;
                     Vector3 fullSep = epa.Normal * pd;
+
                     float invA = (bodyA != null ? 1f / bodyA.TotalMass() : 0f);
                     float invB = (bodyB != null ? 1f / bodyB.TotalMass() : 0f);
                     float invSum = invA + invB;
-                    if (invSum <= 0f) invSum = 1f; // both static
+                    if (invSum <= 0f) invSum = 1f;
+
                     float ratioA = invA / invSum;
                     float ratioB = invB / invSum;
 
-                    Vector3 sepA = -fullSep * ratioA;
-                    Vector3 sepB =  fullSep * ratioB;
+                    float sepFactor = Mathf.Clamp(pd / 0.05f, 0.02f, 0.2f);
+                    Vector3 sepA = -fullSep * ratioA * sepFactor;
+                    Vector3 sepB =  fullSep * ratioB * sepFactor;
 
                     if (A is SpringPhysicsCollider sp1)
                         sp1.Body.Points.ForEach(p => { if (!p.IsFixed) p.Position += sepA; });
@@ -124,6 +125,10 @@ namespace Physics
                     else if (!B.IsStatic)
                         B.transform.position += sepB;
 
+                    // ✅ تخميد إضافي بعد التصحيح
+                    if (bodyA != null) bodyA.ApplyLocalDamping(epa.ContactPoint, 1.5f, 0.9f);
+                    if (bodyB != null) bodyB.ApplyLocalDamping(epa.ContactPoint, 1.5f, 0.9f);
+
                     // notify break/deform
                     A.OnCollision(epa);
                     var inv = epa; inv.Normal = -epa.Normal;
@@ -131,10 +136,10 @@ namespace Physics
                 }
             }
 
-            // 2. Enter/Exit events
             foreach (var c in Colliders)
                 c.UpdateState();
         }
+
 
         private GJKResult RunGJK(PhysicsCollider a, PhysicsCollider b)
         {

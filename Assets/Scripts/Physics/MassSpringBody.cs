@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using Physics.Materials;
 namespace Physics
@@ -28,6 +29,33 @@ namespace Physics
         private MeshFilter    _mf;
         private Mesh          _dynamicMesh;
         private Vector3[]     _baseVertices;
+        private bool _isSleeping = false;
+        private float _sleepCooldown = 0f;
+        private Queue<float> energyHistory = new Queue<float>();
+        private Queue<float> recentEnergy = new Queue<float>();
+        private const int EnergyWindow = 3; // عدد الإطارات للمراقبة
+        private const float EnergyThreshold = 800f;
+
+        private bool IsTrulyAtRest()
+        {
+            float kinetic = 0f;
+            foreach (var p in Points)
+            {
+                if (p.IsFixed) continue;
+                kinetic += 0.5f * p.Mass * p.Velocity.sqrMagnitude;
+            }
+
+            recentEnergy.Enqueue(kinetic);
+            if (recentEnergy.Count > EnergyWindow)
+                recentEnergy.Dequeue();
+
+            // إذا كانت كل القراءات الأخيرة تقريبًا صغيرة جدًا، نوقف الحركة
+            Debug.Log($" sum : {(recentEnergy.Sum() / recentEnergy.Count)}");
+
+            return (recentEnergy.Sum() / recentEnergy.Count) < EnergyThreshold;
+            // return recentEnergy.All(e => e < EnergyThreshold);
+        }
+
 
         // rigid-body state
         private float   _inertia;
@@ -145,12 +173,30 @@ Shader ""Hidden/Internal-Colored""
 
             _inertia = ComputeMomentOfInertia();
         }
+        private float ComputeTotalEnergy()
+        {
+            float kinetic = 0f;
+            foreach (var p in Points)
+                if (!p.IsFixed)
+                    kinetic += 0.5f * p.Mass * p.Velocity.sqrMagnitude;
+
+            float springEnergy = 0f;
+            foreach (var s in Springs)
+            {
+                if (s.IsBroken) continue;
+                float stretch = (s.PointA.Position - s.PointB.Position).magnitude - s.RestLength;
+                springEnergy += 0.5f * s.Stiffness * stretch * stretch;
+            }
+
+            return kinetic + springEnergy;
+        }
 
         private void FixedUpdate()
         {
             var col = GetComponent<PhysicsCollider>();
             if (col != null && col.IsStatic)
                 return;
+            
             // 1) القوى الخارجية
             foreach (var p in Points)
             {
@@ -181,7 +227,16 @@ Shader ""Hidden/Internal-Colored""
 
             // 6) تحديث الميش
             UpdateMeshVertices();
-            
+            // 7) منطق النوم
+            if (IsTrulyAtRest())
+            {
+                foreach (var p in Points)
+                    p.Velocity = Vector3.zero;
+                _angularVelocity = Vector3.zero;
+            }
+
+
+
         }
 
         private void VerletStep()
@@ -232,6 +287,32 @@ Shader ""Hidden/Internal-Colored""
             foreach (var p in Points) m += p.Mass;
             return m;
         }
+        public bool IsAlmostAtRest(float velocityThreshold = 0.01f, float forceThreshold = 0.01f)
+        {
+            foreach (var p in Points)
+            {
+                if (!p.IsFixed)
+                {
+                    Debug.Log($"[tttttt] velo : {p.Velocity.magnitude}    ,  force : {p.Force.magnitude}");
+                    if (p.Velocity.magnitude > velocityThreshold || p.Force.magnitude > forceThreshold)
+                        return false;
+                }
+            }
+            return true;
+        }
+        public void WakeUp()
+        {
+            if (!_isSleeping) return;
+
+            foreach (var p in Points)
+                p.IsFixed = false;
+
+            _isSleeping = false;
+            _sleepCooldown = 0f;
+            Debug.Log($"[WakeUp] Body {name} was reactivated.");
+        }
+
+
         public void ApplyLocalDamping(Vector3 center, float radius, float dampingFactor = 0.5f)
         {
             foreach (var p in Points)
@@ -347,7 +428,7 @@ Shader ""Hidden/Internal-Colored""
         private void OnDrawGizmos()
         {
             if (Points == null || Springs == null) return;
-            Gizmos.color = Color.red;
+            Gizmos.color = Color.green;
             foreach (var p in Points)
                 Gizmos.DrawSphere(p.Position, 0.02f);
             Gizmos.color = Color.cyan;

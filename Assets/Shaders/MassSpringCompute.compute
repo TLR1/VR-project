@@ -1,0 +1,182 @@
+#pragma kernel UpdateForces
+#pragma kernel UpdatePositions
+
+// Data structures matching C# structs
+struct MassPoint
+{
+    float3 position;
+    float3 velocity;
+    float3 force;
+    float mass;
+    int isFixed;
+};
+
+struct Spring
+{
+    int pointAIndex;
+    int pointBIndex;
+    float restLength;
+    float stiffness;
+    float damping;
+    float yieldThreshold;
+    float fractureThreshold;
+    float plasticity;
+    int isBroken;
+};
+
+// Compute Buffers
+RWStructuredBuffer<MassPoint> _MassPoints;
+RWStructuredBuffer<Spring> _Springs;
+RWStructuredBuffer<float3> _PrevPositions;
+
+// Simulation parameters
+float _TimeStep;
+float _Gravity;
+float3 _ExternalForce;
+float _AirDragFactor;
+float3 _WindForce;
+int _EnableAirDrag;
+int _EnableWind;
+int _IntegrationType; // 0 = Verlet, 1 = SemiImplicitEuler
+int _PointCount;
+int _SpringCount;
+
+// Constants
+static const float EPSILON = 1e-6f;
+static const float PI = 3.14159265359f;
+
+// Utility functions
+float3 CalculateSpringForce(float3 posA, float3 posB, float3 velA, float3 velB, 
+                           float restLength, float stiffness, float damping)
+{
+    float3 delta = posA - posB;
+    float currentLength = length(delta);
+    
+    if (currentLength < EPSILON)
+        return float3(0, 0, 0);
+    
+    float3 direction = delta / currentLength;
+    
+    // Spring force: F = -k * (L - L0)
+    float springForce = -stiffness * (currentLength - restLength);
+    
+    // Damping force: F = -c * (vA - vB) · direction
+    float dampingForce = -damping * dot(velA - velB, direction);
+    
+    return (springForce + dampingForce) * direction;
+}
+
+void EvaluatePlasticAndFracture(int springIndex, float currentLength)
+{
+    Spring spring = _Springs[springIndex];
+    if (spring.isBroken != 0) return;
+    
+    float stretch = abs(currentLength - spring.restLength);
+    
+    // Plastic deformation
+    if (spring.yieldThreshold > 0.0f && stretch > spring.yieldThreshold)
+    {
+        // Update rest length permanently
+        spring.restLength += spring.plasticity * (currentLength - spring.restLength);
+        _Springs[springIndex] = spring;
+    }
+    
+    // Fracture
+    if (spring.fractureThreshold > 0.0f && stretch > spring.fractureThreshold)
+    {
+        spring.isBroken = 1;
+        _Springs[springIndex] = spring;
+    }
+}
+
+// Kernel 1: Update forces (one thread per spring)
+[numthreads(64, 1, 1)]
+void UpdateForces(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _SpringCount) return;
+    
+    Spring spring = _Springs[id.x];
+    if (spring.isBroken != 0) return;
+    
+    MassPoint pointA = _MassPoints[spring.pointAIndex];
+    MassPoint pointB = _MassPoints[spring.pointBIndex];
+    
+    // Calculate spring force
+    float3 springForce = CalculateSpringForce(
+        pointA.position, pointB.position,
+        pointA.velocity, pointB.velocity,
+        spring.restLength, spring.stiffness, spring.damping
+    );
+    
+    // Apply forces to both points
+    if (pointA.isFixed == 0)
+    {
+        pointA.force += springForce;
+        _MassPoints[spring.pointAIndex] = pointA;
+    }
+    
+    if (pointB.isFixed == 0)
+    {
+        pointB.force -= springForce; // Opposite force
+        _MassPoints[spring.pointBIndex] = pointB;
+    }
+    
+    // Evaluate plastic deformation and fracture
+    float currentLength = length(pointA.position - pointB.position);
+    EvaluatePlasticAndFracture(id.x, currentLength);
+}
+
+// Kernel 2: Update positions (one thread per mass point)
+[numthreads(64, 1, 1)]
+void UpdatePositions(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _PointCount) return;
+    
+    MassPoint point = _MassPoints[id.x];
+    if (point.isFixed != 0) return;
+    
+    // Apply external forces
+    point.force += float3(0, _Gravity, 0) * point.mass;
+    point.force += _ExternalForce;
+    
+    if (_EnableAirDrag != 0)
+    {
+        point.force += -_AirDragFactor * point.velocity;
+    }
+    
+    if (_EnableWind != 0)
+    {
+        point.force += _WindForce;
+    }
+    
+    // Integration
+    if (_IntegrationType == 0) // Verlet
+    {
+        float3 acceleration = point.force / point.mass;
+        float3 currentPos = point.position;
+        float3 prevPos = _PrevPositions[id.x];
+        
+        // Verlet integration: x(t+dt) = 2*x(t) - x(t-dt) + a*dt²
+        float3 nextPos = 2.0f * currentPos - prevPos + acceleration * _TimeStep * _TimeStep;
+        
+        // Update velocity: v = (x(t+dt) - x(t-dt)) / (2*dt)
+        point.velocity = (nextPos - prevPos) / (2.0f * _TimeStep);
+        
+        // Store previous position for next frame
+        _PrevPositions[id.x] = currentPos;
+        point.position = nextPos;
+    }
+    else // Semi-implicit Euler
+    {
+        float3 acceleration = point.force / point.mass;
+        
+        // Semi-implicit Euler: v(t+dt) = v(t) + a*dt, x(t+dt) = x(t) + v(t+dt)*dt
+        point.velocity += acceleration * _TimeStep;
+        point.position += point.velocity * _TimeStep;
+    }
+    
+    // Reset force for next frame
+    point.force = float3(0, 0, 0);
+    
+    _MassPoints[id.x] = point;
+} 
