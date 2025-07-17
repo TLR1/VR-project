@@ -106,7 +106,7 @@ namespace Physics
                     float ratioA = invA / invSum;
                     float ratioB = invB / invSum;
 
-                    float sepFactor = Mathf.Clamp(pd / 0.05f, 0.02f, 0.2f);
+                    float sepFactor = Mathf.Clamp(pd / 0.05f, 0.02f, 0.1f);
                     Vector3 sepA = -fullSep * ratioA * sepFactor;
                     Vector3 sepB =  fullSep * ratioB * sepFactor;
 
@@ -125,6 +125,9 @@ namespace Physics
                     if (bodyB != null) bodyB.ApplyLocalDamping(epa.ContactPoint, 1.5f, 0.9f);
 
                     // notify break/deform
+                    bodyA?.WakeUp();
+                    bodyB?.WakeUp();
+
                     A.OnCollision(epa);
                     var inv = epa; inv.Normal = -epa.Normal;
                     B.OnCollision(inv);

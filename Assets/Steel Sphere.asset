@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   TotalMass: 5000
   Density: 1000
-  Elasticity: 0.064
+  Elasticity: 0
   Stiffness: 1000
   Damping: 0
   YieldThreshold: 0.1

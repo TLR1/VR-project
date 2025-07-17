@@ -150,8 +150,8 @@ namespace Physics.GPU
                 gpuBody.enableWind = originalEnableWind;
                 gpuBody.windForce = originalWindForce;
                 gpuBody.integration = originalIntegration == MassSpringBody.IntegrationType.Verlet ?
-                    MassSpringGPU.IntegrationType.Verlet :
-                    MassSpringGPU.IntegrationType.SemiImplicitEuler;
+    IntegrationType.Verlet :
+    IntegrationType.SemiImplicitEuler;
                 gpuBody.threadGroupSize = 64;
 
                 // Configure collision

@@ -4,12 +4,16 @@ using Physics.Materials;
 
 namespace Physics.GPU
 {
-    [RequireComponent(typeof(MeshFilter))]
+    public enum IntegrationType { Verlet, SemiImplicitEuler }
+
     public class MassSpringGPU : MonoBehaviour
     {
         [Header("Compute Shader")]
         public ComputeShader massSpringCompute;
 
+        [Header("Data Source")]
+        [Tooltip("Use VoxelMassSpringGenerator instead of mesh vertices")]
+        public bool useVoxelGenerator = false;
 
         [Header("Simulation Settings")]
         public float timeStep = 0.02f;
@@ -21,26 +25,23 @@ namespace Physics.GPU
         public Vector3 windForce = Vector3.zero;
 
         [Header("Integration")]
-        public enum IntegrationType { Verlet, SemiImplicitEuler }
         public IntegrationType integration = IntegrationType.Verlet;
 
         [Header("Performance")]
         [Range(1, 64)]
         public int threadGroupSize = 64;
         public bool useFixedTimestep = true;
-
-        [Tooltip("how often to check for and remove broken springs (frames)")]
+        [Tooltip("How often to check for and remove broken springs (frames)")]
         public int springCleanupInterval = 10;
 
         // Compute Buffers
-        private ComputeBuffer _massPointsBuffer;
         private ComputeBuffer _springsBuffer;
         private ComputeBuffer _prevPositionsBuffer;
 
         // Data structures
-        private MassPointGPU[] _massPoints;
-        private SpringGPU[] _springs;
-        private Vector3[] _prevPositions;
+        public MassPointGPU[] _massPoints;
+        public SpringGPU[] _springs;
+        public Vector3[] _prevPositions;
 
         // Compute Shader kernel indices
         private int _updateForcesKernel;
@@ -50,16 +51,18 @@ namespace Physics.GPU
         private MaterialHolder _materialHolder;
         private MaterialProfile _materialProfile;
 
-        // Mesh components
+        // Mesh components (only used if not using voxel generator)
         private MeshFilter _meshFilter;
         private Mesh _dynamicMesh;
         private Vector3[] _baseVertices;
+
+        // Voxel generator reference
+        private VoxelMassSpringGenerator _voxelGenerator;
 
         // Simulation state
         private bool _isInitialized = false;
         public int _pointCount { get; private set; }
         public int _springCount { get; private set; }
-
         private int _frameCount = 0;
 
         // Public access to buffers for collision system
@@ -96,14 +99,32 @@ namespace Physics.GPU
 
         private void Awake()
         {
-            _meshFilter = GetComponent<MeshFilter>();
             _materialHolder = GetComponent<MaterialHolder>();
 
-            if (_meshFilter.sharedMesh != null)
+            if (!useVoxelGenerator)
             {
-                _dynamicMesh = Instantiate(_meshFilter.sharedMesh);
-                _meshFilter.mesh = _dynamicMesh;
-                _baseVertices = _dynamicMesh.vertices;
+                _meshFilter = GetComponent<MeshFilter>();
+                if (_meshFilter == null)
+                {
+                    Debug.LogError("MassSpringGPU: MeshFilter component required when not using voxel generator!");
+                    return;
+                }
+
+                if (_meshFilter.sharedMesh != null)
+                {
+                    _dynamicMesh = Instantiate(_meshFilter.sharedMesh);
+                    _meshFilter.mesh = _dynamicMesh;
+                    _baseVertices = _dynamicMesh.vertices;
+                }
+            }
+            else
+            {
+                _voxelGenerator = GetComponent<VoxelMassSpringGenerator>();
+                if (_voxelGenerator == null)
+                {
+                    Debug.LogError("MassSpringGPU: VoxelMassSpringGenerator component required when using voxel generator!");
+                    return;
+                }
             }
 
             if (_materialHolder != null)
@@ -144,57 +165,131 @@ namespace Physics.GPU
 
         private void GenerateMassSpringData()
         {
-            var mesh = _meshFilter.sharedMesh;
-            if (mesh == null) return;
-
-            var vertices = mesh.vertices;
-            var triangles = mesh.triangles;
-
-            _pointCount = vertices.Length;
-            _massPoints = new MassPointGPU[_pointCount];
-            _prevPositions = new Vector3[_pointCount];
-
-            // Calculate mass per point
-            float particleMass = 1f;
-            if (_materialProfile != null)
+            if (useVoxelGenerator && _voxelGenerator == null)
             {
-                particleMass = _materialProfile.Density * 1f; // Assuming unit volume
-            }
-
-            // Initialize mass points
-            for (int i = 0; i < _pointCount; i++)
-            {
-                Vector3 worldPos = transform.TransformPoint(vertices[i]);
-                _massPoints[i] = new MassPointGPU
+                _voxelGenerator = GetComponent<VoxelMassSpringGenerator>();
+                if (_voxelGenerator == null)
                 {
-                    position = worldPos,
-                    velocity = Vector3.zero,
-                    force = Vector3.zero,
-                    mass = particleMass,
-                    isFixed = 0
-                };
-                _prevPositions[i] = worldPos;
+                    Debug.LogError("MassSpringGPU: VoxelMassSpringGenerator not found on this GameObject.");
+                    return;
+                }
             }
 
-            // Generate springs from mesh edges
-            var springSet = new HashSet<(int, int)>();
-            var springList = new List<SpringGPU>();
-
-            float stiffness = _materialProfile?.Stiffness ?? 1000f;
-            float damping = _materialProfile?.Damping ?? 50f;
-            float yieldThreshold = _materialProfile?.YieldThreshold ?? 0.1f;
-            float fractureThreshold = _materialProfile?.BreakThreshold ?? 0.3f;
-            float plasticity = _materialProfile?.Plasticity ?? 0.05f;
-
-            for (int i = 0; i < triangles.Length; i += 3)
+            if (!useVoxelGenerator)
             {
-                AddSpring(triangles[i], triangles[i + 1], springSet, springList, stiffness, damping, yieldThreshold, fractureThreshold, plasticity);
-                AddSpring(triangles[i + 1], triangles[i + 2], springSet, springList, stiffness, damping, yieldThreshold, fractureThreshold, plasticity);
-                AddSpring(triangles[i + 2], triangles[i], springSet, springList, stiffness, damping, yieldThreshold, fractureThreshold, plasticity);
-            }
+                var mesh = _meshFilter.sharedMesh;
+                if (mesh == null) return;
 
-            _springs = springList.ToArray();
-            _springCount = _springs.Length;
+                var vertices = mesh.vertices;
+                var triangles = mesh.triangles;
+
+                _pointCount = vertices.Length;
+                _massPoints = new MassPointGPU[_pointCount];
+                _prevPositions = new Vector3[_pointCount];
+
+                // Calculate mass per point
+                float particleMass = 1f;
+                if (_materialProfile != null)
+                {
+                    particleMass = _materialProfile.Density * 1f; // Assuming unit volume
+                }
+
+                // Initialize mass points
+                for (int i = 0; i < _pointCount; i++)
+                {
+                    Vector3 worldPos = transform.TransformPoint(vertices[i]);
+                    _massPoints[i] = new MassPointGPU
+                    {
+                        position = worldPos,
+                        velocity = Vector3.zero,
+                        force = Vector3.zero,
+                        mass = particleMass,
+                        isFixed = 0
+                    };
+                    _prevPositions[i] = worldPos;
+                }
+
+                // Generate springs from mesh edges
+                var springSet = new HashSet<(int, int)>();
+                var springList = new List<SpringGPU>();
+
+                float stiffness = _materialProfile?.Stiffness ?? 1000f;
+                float damping = _materialProfile?.Damping ?? 50f;
+                float yieldThreshold = _materialProfile?.YieldThreshold ?? 0.1f;
+                float fractureThreshold = _materialProfile?.BreakThreshold ?? 0.3f;
+                float plasticity = _materialProfile?.Plasticity ?? 0.05f;
+
+                for (int i = 0; i < triangles.Length; i += 3)
+                {
+                    AddSpring(triangles[i], triangles[i + 1], springSet, springList, stiffness, damping, yieldThreshold, fractureThreshold, plasticity);
+                    AddSpring(triangles[i + 1], triangles[i + 2], springSet, springList, stiffness, damping, yieldThreshold, fractureThreshold, plasticity);
+                    AddSpring(triangles[i + 2], triangles[i], springSet, springList, stiffness, damping, yieldThreshold, fractureThreshold, plasticity);
+                }
+
+                _springs = springList.ToArray();
+                _springCount = _springs.Length;
+            }
+            else
+            {
+                _pointCount = _voxelGenerator.PointCount;
+                _massPoints = new MassPointGPU[_pointCount];
+                _prevPositions = new Vector3[_pointCount];
+
+                // Initialize mass points from voxel generator
+                for (int i = 0; i < _pointCount; i++)
+                {
+                    _massPoints[i] = new MassPointGPU
+                    {
+                        position = _voxelGenerator.GetPointPosition(i),
+                        velocity = Vector3.zero,
+                        force = Vector3.zero,
+                        mass = _voxelGenerator.GetPointMass(i),
+                        isFixed = _voxelGenerator.IsPointFixed(i) ? 1 : 0
+                    };
+                    _prevPositions[i] = _massPoints[i].position;
+                }
+
+                // Generate springs from voxel grid
+                var springSet = new HashSet<(int, int)>();
+                var springList = new List<SpringGPU>();
+
+                float stiffness = _materialProfile?.Stiffness ?? 1000f;
+                float damping = _materialProfile?.Damping ?? 50f;
+                float yieldThreshold = _materialProfile?.YieldThreshold ?? 0.1f;
+                float fractureThreshold = _materialProfile?.BreakThreshold ?? 0.3f;
+                float plasticity = _materialProfile?.Plasticity ?? 0.05f;
+
+                for (int x = 0; x < _voxelGenerator.GridSize.x; x++)
+                {
+                    for (int y = 0; y < _voxelGenerator.GridSize.y; y++)
+                    {
+                        for (int z = 0; z < _voxelGenerator.GridSize.z; z++)
+                        {
+                            int currentIndex = _voxelGenerator.GetVoxelIndex(x, y, z);
+                            if (currentIndex == -1) continue; // Skip empty voxels
+
+                            // Check neighbors in the 3x3x3 grid
+                            for (int dx = -1; dx <= 1; dx++)
+                            {
+                                for (int dy = -1; dy <= 1; dy++)
+                                {
+                                    for (int dz = -1; dz <= 1; dz++)
+                                    {
+                                        int neighborIndex = _voxelGenerator.GetVoxelIndex(x + dx, y + dy, z + dz);
+                                        if (neighborIndex != -1 && neighborIndex != currentIndex)
+                                        {
+                                            AddSpring(currentIndex, neighborIndex, springSet, springList, stiffness, damping, yieldThreshold, fractureThreshold, plasticity);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                _springs = springList.ToArray();
+                _springCount = _springs.Length;
+            }
         }
 
         private void AddSpring(int a, int b, HashSet<(int, int)> springSet, List<SpringGPU> springList,
@@ -259,11 +354,19 @@ namespace Physics.GPU
         {
             if (!_isInitialized) return;
 
+            _frameCount++;
+
             // Update compute shader parameters
             UpdateComputeShaderParameters();
 
             // Dispatch compute shaders
             DispatchComputeShaders();
+
+            // Remove broken springs (less frequently for performance)
+            if (_frameCount % springCleanupInterval == 0)
+            {
+                RemoveBrokenSprings();
+            }
 
             // Update mesh vertices
             UpdateMeshVertices();
@@ -293,23 +396,74 @@ namespace Physics.GPU
             massSpringCompute.Dispatch(_updatePositionsKernel, pointGroups, 1, 1);
         }
 
-        private void UpdateMeshVertices()
+        private void RemoveBrokenSprings()
         {
-            if (_dynamicMesh == null || _baseVertices == null) return;
+            // Read back springs data to check for broken ones
+            _springsBuffer.GetData(_springs);
 
-            // Read back mass points data
-            _massPointsBuffer.GetData(_massPoints);
-
-            // Update mesh vertices
-            var vertices = new Vector3[_baseVertices.Length];
-            for (int i = 0; i < vertices.Length; i++)
+            // Count broken springs
+            int brokenCount = 0;
+            for (int i = 0; i < _springCount; i++)
             {
-                vertices[i] = transform.InverseTransformPoint(_massPoints[i].position);
+                if (_springs[i].isBroken != 0)
+                {
+                    brokenCount++;
+                }
             }
 
-            _dynamicMesh.vertices = vertices;
-            _dynamicMesh.RecalculateNormals();
-            _dynamicMesh.RecalculateBounds();
+            // If there are broken springs, rebuild the buffer
+            if (brokenCount > 0)
+            {
+                var validSprings = new List<SpringGPU>();
+                for (int i = 0; i < _springCount; i++)
+                {
+                    if (_springs[i].isBroken == 0)
+                    {
+                        validSprings.Add(_springs[i]);
+                    }
+                }
+
+                _springs = validSprings.ToArray();
+                _springCount = _springs.Length;
+
+                // Recreate the buffer with new size
+                if (_springsBuffer != null)
+                {
+                    _springsBuffer.Release();
+                }
+                _springsBuffer = new ComputeBuffer(_springCount, SpringGPU.Size);
+                _springsBuffer.SetData(_springs);
+
+                // Update compute shader buffer reference
+                massSpringCompute.SetBuffer(_updateForcesKernel, "_Springs", _springsBuffer);
+                massSpringCompute.SetInt("_SpringCount", _springCount);
+
+                Debug.Log($"Removed {brokenCount} broken springs. Remaining: {_springCount}");
+            }
+        }
+
+        private void UpdateMeshVertices()
+        {
+            if (!useVoxelGenerator)
+            {
+                if (_dynamicMesh == null || _baseVertices == null) return;
+
+                // Read back mass points data
+                _massPointsBuffer.GetData(_massPoints);
+
+                // Update mesh vertices
+                var vertices = new Vector3[_baseVertices.Length];
+                for (int i = 0; i < vertices.Length; i++)
+                {
+                    vertices[i] = transform.InverseTransformPoint(_massPoints[i].position);
+                }
+
+                _dynamicMesh.vertices = vertices;
+                _dynamicMesh.RecalculateNormals();
+                _dynamicMesh.RecalculateBounds();
+            }
+            // When using voxel generator, mesh vertices are not updated
+            // The voxel visualization is handled by VoxelMassSpringGenerator
         }
 
         public void ApplyImpulse(Vector3 impulse, Vector3 contactPoint, float impactRadius = 0.3f)

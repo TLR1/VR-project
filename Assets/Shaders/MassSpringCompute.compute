@@ -9,6 +9,8 @@ struct MassPoint
     float3 force;
     float mass;
     int isFixed;
+    // Padding to ensure proper alignment
+    int padding;
 };
 
 struct Spring

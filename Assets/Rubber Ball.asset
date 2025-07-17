@@ -12,8 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 30b8263ff4314045b78cc5c1ae3f5507, type: 3}
   m_Name: Rubber Ball
   m_EditorClassIdentifier: 
+  TotalMass: 5000
   Density: 1000
-  Elasticity: 0.5
+  Elasticity: 1
   Stiffness: 1000
   Damping: 50
   YieldThreshold: 0.1

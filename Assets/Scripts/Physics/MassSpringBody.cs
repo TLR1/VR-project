@@ -27,33 +27,52 @@ namespace Physics
 
         private List<Vector3> _prevPositions;
         private MeshFilter    _mf;
-        private Mesh          _dynamicMesh;
         private Vector3[]     _baseVertices;
+        private MeshFilter _meshFilter;
+        private Mesh _dynamicMesh;
         private bool _isSleeping = false;
         private float _sleepCooldown = 0f;
         private Queue<float> energyHistory = new Queue<float>();
         private Queue<float> recentEnergy = new Queue<float>();
-        private const int EnergyWindow = 3; // عدد الإطارات للمراقبة
-        private const float EnergyThreshold = 800f;
+        private const int EnergyWindow = 20; // عدد الإطارات للمراقبة
+        private const float EnergyThreshold = 0.05f;
+        private const float SleepPositionThreshold = 0.4f; // مدى التحرك المقبول
+        private const int SleepFrameCount = 3;             // عدد الإطارات المتتالية
+        private int simulationFrameCount = 0;
+        private const int SleepStartFrame = 70;
+        private Queue<Vector3> recentCOMPositions = new Queue<Vector3>();
+        private bool isSleeping = false;
+        private Vector3 lastFrameCOMPos = Vector3.zero;
+        private int restFrameCount = 0;
+        private const float MovementThreshold = 0.01f;
+        private const int MinFramesAtRest = 9;
+        private bool IsSleeping = false;
 
-        private bool IsTrulyAtRest()
+        private bool CheckSleepByPosition()
         {
-            float kinetic = 0f;
+            Vector3 com = Vector3.zero;
+            int count = 0;
             foreach (var p in Points)
             {
                 if (p.IsFixed) continue;
-                kinetic += 0.5f * p.Mass * p.Velocity.sqrMagnitude;
+                com += p.Position;
+                count++;
+            }
+            if (count == 0) return false;
+            com /= count;
+
+            Vector3 delta = com - lastFrameCOMPos;
+            lastFrameCOMPos = com;
+
+            if (delta.magnitude > MovementThreshold)
+            {
+                restFrameCount = 0;
+                return false;
             }
 
-            recentEnergy.Enqueue(kinetic);
-            if (recentEnergy.Count > EnergyWindow)
-                recentEnergy.Dequeue();
-
-            // إذا كانت كل القراءات الأخيرة تقريبًا صغيرة جدًا، نوقف الحركة
-            Debug.Log($" sum : {(recentEnergy.Sum() / recentEnergy.Count)}");
-
-            return (recentEnergy.Sum() / recentEnergy.Count) < EnergyThreshold;
-            // return recentEnergy.All(e => e < EnergyThreshold);
+            restFrameCount++;
+            Debug.Log($"rest = {restFrameCount}");
+            return restFrameCount >= MinFramesAtRest;
         }
 
 
@@ -63,13 +82,20 @@ namespace Physics
 
         private void Awake()
         {
-            _mf = GetComponent<MeshFilter>();
-            if (_mf.sharedMesh != null)
+            _meshFilter = GetComponent<MeshFilter>();
+
+            if (_meshFilter.sharedMesh == null)
             {
-                _dynamicMesh  = Instantiate(_mf.sharedMesh);
-                _mf.mesh      = _dynamicMesh;
-                _baseVertices = _dynamicMesh.vertices;
+                _dynamicMesh = new Mesh();
+                _meshFilter.mesh = _dynamicMesh;
+                InitializeMesh();
             }
+            else
+            {
+                _dynamicMesh = Instantiate(_meshFilter.sharedMesh);
+                _meshFilter.mesh = _dynamicMesh;
+            }
+
         }
 
         private void Start()
@@ -94,30 +120,27 @@ namespace Physics
 
             _inertia = ComputeMomentOfInertia();
         }
-        private float ComputeTotalEnergy()
-        {
-            float kinetic = 0f;
-            foreach (var p in Points)
-                if (!p.IsFixed)
-                    kinetic += 0.5f * p.Mass * p.Velocity.sqrMagnitude;
-
-            float springEnergy = 0f;
-            foreach (var s in Springs)
-            {
-                if (s.IsBroken) continue;
-                float stretch = (s.PointA.Position - s.PointB.Position).magnitude - s.RestLength;
-                springEnergy += 0.5f * s.Stiffness * stretch * stretch;
-            }
-
-            return kinetic + springEnergy;
-        }
+       
 
         private void FixedUpdate()
         {
+            
             var col = GetComponent<PhysicsCollider>();
             if (col != null && col.IsStatic)
                 return;
-            
+            if (IsSleeping)
+                return;
+            simulationFrameCount++;
+
+            if (CheckSleepByPosition())
+            {
+                foreach (var p in Points)
+                    p.Velocity = Vector3.zero;
+                _angularVelocity = Vector3.zero;
+                IsSleeping = true;
+            }
+
+
             // 1) القوى الخارجية
             foreach (var p in Points)
             {
@@ -149,12 +172,7 @@ namespace Physics
             // 6) تحديث الميش
             UpdateMeshVertices();
             // 7) منطق النوم
-            if (IsTrulyAtRest())
-            {
-                foreach (var p in Points)
-                    p.Velocity = Vector3.zero;
-                _angularVelocity = Vector3.zero;
-            }
+            
 
 
 
@@ -188,19 +206,7 @@ namespace Physics
             }
         }
 
-        private void UpdateMeshVertices()
-        {
-            if (_dynamicMesh == null || _baseVertices == null) return;
-            if (Points.Count != _baseVertices.Length) return;
-
-            var verts = new Vector3[_baseVertices.Length];
-            for (int i = 0; i < verts.Length; i++)
-                verts[i] = transform.InverseTransformPoint(Points[i].Position);
-
-            _dynamicMesh.vertices = verts;
-            _dynamicMesh.RecalculateNormals();
-            _dynamicMesh.RecalculateBounds();
-        }
+        
 
         public float TotalMass()
         {
@@ -208,30 +214,14 @@ namespace Physics
             foreach (var p in Points) m += p.Mass;
             return m;
         }
-        public bool IsAlmostAtRest(float velocityThreshold = 0.01f, float forceThreshold = 0.01f)
-        {
-            foreach (var p in Points)
-            {
-                if (!p.IsFixed)
-                {
-                    Debug.Log($"[tttttt] velo : {p.Velocity.magnitude}    ,  force : {p.Force.magnitude}");
-                    if (p.Velocity.magnitude > velocityThreshold || p.Force.magnitude > forceThreshold)
-                        return false;
-                }
-            }
-            return true;
-        }
+      
         public void WakeUp()
         {
-            if (!_isSleeping) return;
-
-            foreach (var p in Points)
-                p.IsFixed = false;
-
-            _isSleeping = false;
-            _sleepCooldown = 0f;
-            Debug.Log($"[WakeUp] Body {name} was reactivated.");
+            IsSleeping = false;
+            recentCOMPositions.Clear();
+            
         }
+
 
 
         public void ApplyLocalDamping(Vector3 center, float radius, float dampingFactor = 0.5f)
@@ -271,8 +261,9 @@ namespace Physics
             }
 
             float inertia = ComputeInertia(com);
+            totalTorque *= 1000f;
             _angularVelocity = (inertia > 1e-5f) ? totalTorque / inertia : Vector3.zero;
-            _angularVelocity *= 1000f;
+            // _angularVelocity *= 1000f;
             Debug.Log($"angular : {_angularVelocity}   , interia    :  {inertia}    total tor : {totalTorque}");
         }
 
@@ -343,6 +334,60 @@ namespace Physics
                 I += p.Mass * r.sqrMagnitude;
             }
             return I;
+        }
+        private List<MassPoint> GetSurfacePoints()
+        {
+            return Points.Where(p => p.IsSurface).ToList();
+        }
+
+        private void InitializeMesh()
+        {
+            var surfacePoints = GetSurfacePoints();
+            Vector3[] vertices = new Vector3[surfacePoints.Count];
+
+            for (int i = 0; i < surfacePoints.Count; i++)
+                vertices[i] = transform.InverseTransformPoint(surfacePoints[i].Position);
+
+            _dynamicMesh = new Mesh();
+            _dynamicMesh.name = "SurfaceMesh";
+            _dynamicMesh.vertices = vertices;
+            _dynamicMesh.triangles = GenerateTrianglesFromPoints(surfacePoints);
+            _dynamicMesh.RecalculateNormals();
+            _dynamicMesh.RecalculateBounds();
+
+            _meshFilter.mesh = _dynamicMesh;
+        }
+
+
+        private void UpdateMeshVertices()
+        {
+            var surfacePoints = GetSurfacePoints();
+            Vector3[] vertices = new Vector3[surfacePoints.Count];
+
+            for (int i = 0; i < surfacePoints.Count; i++)
+                vertices[i] = transform.InverseTransformPoint(surfacePoints[i].Position);
+
+            _dynamicMesh.vertices = vertices;
+            _dynamicMesh.RecalculateNormals();
+            _dynamicMesh.RecalculateBounds();
+        }
+
+
+        private int[] GenerateTrianglesFromPoints(List<MassPoint> points)
+        {
+            // يجب استخدام مكتبة تثليث حقيقية هنا (مثل MIConvexHull)
+            // هذا مثال مبسط جدًا (غير مناسب لأجسام معقدة)
+
+            List<int> triangles = new List<int>();
+
+            for (int i = 1; i < points.Count - 1; i++)
+            {
+                triangles.Add(0);
+                triangles.Add(i);
+                triangles.Add(i + 1);
+            }
+
+            return triangles.ToArray();
         }
 
 #if UNITY_EDITOR

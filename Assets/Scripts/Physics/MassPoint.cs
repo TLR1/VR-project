@@ -14,12 +14,15 @@ public class MassPoint
     public float Mass = 1f;
     public bool IsFixed = false;
 
+    /// <summary>تحديد ما إذا كانت هذه النقطة تقع على السطح (لأغراض توليد الميش).</summary>
+    public bool IsSurface = true;
+
     /// <summary>هل تم تفعيل التخميد المحلي على هذه النقطة؟</summary>
     public bool LocallyDamped = false;
 
     public MassPoint() { }
 
-    public MassPoint(Vector3 position, float mass = 1f, bool isFixed = false)
+    public MassPoint(Vector3 position, float mass = 1f, bool isFixed = false, bool isSurface = true)
     {
         Position = position;
         PreviousPosition = position;
@@ -27,6 +30,7 @@ public class MassPoint
         Force = Vector3.zero;
         Mass = mass;
         IsFixed = isFixed;
+        IsSurface = isSurface;
         LocallyDamped = false;
     }
 

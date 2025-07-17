@@ -47,18 +47,17 @@ namespace Physics
 
             // اقرأ ملف المادة
             var prof = matHolder.Profile;
-            // نوصل k و d و thresholds من material profile
             float k    = prof.Stiffness;
             float d    = prof.Damping;
             float yTh  = prof.YieldThreshold;
             float fTh  = prof.BreakThreshold;
             float pl   = prof.Plasticity;
 
-            // 1) Generate surface voxels
+            // 1) Generate surface points from mesh vertices
             foreach (var localV in mesh.vertices.Distinct())
-                AddPoint(localV, prof);
+                AddPoint(localV, prof, true);  // سطحية
 
-            // 2) Generate interior voxels
+            // 2) Generate interior voxels (non-surface)
             var bounds = mesh.bounds;
             Vector3 step = new Vector3(
                 bounds.size.x / (dimensions.x - 1),
@@ -71,7 +70,7 @@ namespace Physics
                     {
                         Vector3 localP = bounds.min + Vector3.Scale(step, new Vector3(x, y, z));
                         if (IsInsideWinding(localP, mesh))
-                            AddPoint(localP, prof);
+                            AddPoint(localP, prof, false); // نقاط داخلية فقط
                     }
 
             // 3) Build springs via mutual k-NN
@@ -91,7 +90,6 @@ namespace Physics
                 );
             }
 
-            // أنشئ النوابض باستخدام القيم من الملف
             for (int i = 0; i < n; i++)
             {
                 foreach (int j in neighbors[i])
@@ -101,11 +99,7 @@ namespace Physics
                         var spring = new SpringLink(
                             body.Points[i],
                             body.Points[j],
-                            k,    // stiffness
-                            d,    // damping
-                            yTh,  // yieldThreshold
-                            fTh,  // fractureThreshold
-                            pl    // plasticity
+                            k, d, yTh, fTh, pl
                         );
                         body.Springs.Add(spring);
                     }
@@ -113,7 +107,7 @@ namespace Physics
             }
         }
 
-        void AddPoint(Vector3 localP, MaterialProfile prof)
+        void AddPoint(Vector3 localP, MaterialProfile prof, bool isSurface = true)
         {
             Vector3 worldP = transform.TransformPoint(localP);
             var mp = new MassPoint
@@ -122,7 +116,8 @@ namespace Physics
                 PreviousPosition = worldP,
                 Mass             = prof.Density * Mathf.Pow(voxelSize, 3),
                 Velocity         = Vector3.zero,
-                Force            = Vector3.zero
+                Force            = Vector3.zero,
+                IsSurface        = isSurface
             };
             body.Points.Add(mp);
 
@@ -136,13 +131,10 @@ namespace Physics
 
         void Update()
         {
-            // حرك الفوكسلات حسب المواضع الجديدة
             int c = Mathf.Min(instances.Count, body.Points.Count);
             for (int i = 0; i < c; i++)
                 instances[i].transform.position = body.Points[i].Position;
         }
-
-        // ————————————————————— Winding Number (داخل / خارج) ————————————————————— 
 
         bool IsInsideWinding(Vector3 localP, Mesh mesh)
         {

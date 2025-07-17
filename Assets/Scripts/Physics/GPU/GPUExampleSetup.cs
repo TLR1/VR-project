@@ -74,7 +74,7 @@ namespace Physics.GPU
             // Configure simulation settings
             gpuBody.timeStep = 0.02f;
             gpuBody.gravity = -9.81f;
-            gpuBody.integration = MassSpringGPU.IntegrationType.Verlet;
+            gpuBody.integration = IntegrationType.Verlet;
             gpuBody.threadGroupSize = 64;
 
             // Configure collision settings
