@@ -2,33 +2,34 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using Physics.Materials;
+
 namespace Physics
 {
     [RequireComponent(typeof(MeshFilter))]
     public class MassSpringBody : MonoBehaviour
     {
-        public enum IntegrationType { Verlet, Euler }
+        public enum IntegrationType
+        {
+            Verlet,
+            Euler
+        }
 
-        [Header("Particles & Springs")]
-        public List<MassPoint>   Points  = new List<MassPoint>();
-        public List<SpringLink>  Springs = new List<SpringLink>();
+        [Header("Particles & Springs")] public List<MassPoint> Points = new List<MassPoint>();
+        public List<SpringLink> Springs = new List<SpringLink>();
 
-        [Header("Simulation")]
-        public IntegrationType integration = IntegrationType.Verlet;
-        public float          TimeStep    = 0.02f;
+        [Header("Simulation")] public IntegrationType integration = IntegrationType.Verlet;
+        public float TimeStep = 0.02f;
 
-        [Header("External Forces")]
-        public float  Gravity        = -9.81f;
-        public bool   enableAirDrag  = false;
-        public float  airDragFactor  = 0.1f;
-        public bool   enableWind     = false;
-        public Vector3 windForce     = Vector3.zero;
+        [Header("External Forces")] public float Gravity = -9.81f;
+        public bool enableAirDrag = false;
+        public float airDragFactor = 0.1f;
+        public bool enableWind = false;
+        public Vector3 windForce = Vector3.zero;
         public Vector3 externalForce = Vector3.zero;
 
         private List<Vector3> _prevPositions;
-        private MeshFilter    _mf;
-        private Mesh          _dynamicMesh;
-        private Vector3[]     _baseVertices;
+        private MeshFilter _mf;
+        private Vector3[] _baseVertices;
         private MeshFilter _meshFilter;
         private Mesh _dynamicMesh;
         private bool _isSleeping = false;
@@ -38,7 +39,7 @@ namespace Physics
         private const int EnergyWindow = 20; // عدد الإطارات للمراقبة
         private const float EnergyThreshold = 0.05f;
         private const float SleepPositionThreshold = 0.4f; // مدى التحرك المقبول
-        private const int SleepFrameCount = 3;             // عدد الإطارات المتتالية
+        private const int SleepFrameCount = 3; // عدد الإطارات المتتالية
         private int simulationFrameCount = 0;
         private const int SleepStartFrame = 70;
         private Queue<Vector3> recentCOMPositions = new Queue<Vector3>();
@@ -59,6 +60,7 @@ namespace Physics
                 com += p.Position;
                 count++;
             }
+
             if (count == 0) return false;
             com /= count;
 
@@ -78,7 +80,7 @@ namespace Physics
 
 
         // rigid-body state
-        private float   _inertia;
+        private float _inertia;
         private Vector3 _angularVelocity = Vector3.zero;
 
         private void Awake()
@@ -121,14 +123,14 @@ namespace Physics
 
             _inertia = ComputeMomentOfInertia();
         }
-       
 
-            return kinetic + springEnergy;
-        }
+
+
 
         private void FixedUpdate()
         {
-            
+            Debug.Log($"sleeeeeep   {IsSleeping}");
+
             var col = GetComponent<PhysicsCollider>();
             if (col != null && col.IsStatic)
                 return;
@@ -142,6 +144,7 @@ namespace Physics
                     p.Velocity = Vector3.zero;
                 _angularVelocity = Vector3.zero;
                 IsSleeping = true;
+
             }
 
 
@@ -152,10 +155,10 @@ namespace Physics
                 if (p.IsFixed) continue;
                 p.ApplyForce(Vector3.up * Gravity * p.Mass);
                 if (enableAirDrag) p.ApplyForce(-airDragFactor * p.Velocity);
-                if (enableWind)    p.ApplyForce(windForce);
+                if (enableWind) p.ApplyForce(windForce);
                 if (externalForce != Vector3.zero) p.ApplyForce(externalForce);
                 // if (p.Velocity.y > 0f)
-                    // Debug.Log($"[MassPoint] Point {p} is accelerating upward with Vy = {p.Velocity.y}");
+                // Debug.Log($"[MassPoint] Point {p} is accelerating upward with Vy = {p.Velocity.y}");
 
             }
 
@@ -165,7 +168,7 @@ namespace Physics
 
             // 3) التكامل
             if (integration == IntegrationType.Verlet) VerletStep();
-            else                                      EulerStep();
+            else EulerStep();
 
             // 4) إزالة النوابض المكسورة
             Springs.RemoveAll(s => s.IsBroken);
@@ -176,7 +179,7 @@ namespace Physics
             // 6) تحديث الميش
             UpdateMeshVertices();
             // 7) منطق النوم
-            
+
 
 
 
@@ -189,13 +192,13 @@ namespace Physics
             {
                 var p = Points[i];
                 if (p.IsFixed) continue;
-                Vector3 acc  = p.Force / p.Mass;
+                Vector3 acc = p.Force / p.Mass;
                 Vector3 curr = p.Position;
                 Vector3 prev = _prevPositions[i];
                 Vector3 next = 2f * curr - prev + acc * dt2;
-                p.Velocity      = (next - prev) * (0.5f / TimeStep);
+                p.Velocity = (next - prev) * (0.5f / TimeStep);
                 _prevPositions[i] = curr;
-                p.Position      = next;
+                p.Position = next;
             }
         }
 
@@ -205,12 +208,12 @@ namespace Physics
             {
                 if (p.IsFixed) continue;
                 Vector3 acc = p.Force / p.Mass;
-                p.Velocity    += acc * TimeStep;
-                p.Position    += p.Velocity * TimeStep;
+                p.Velocity += acc * TimeStep;
+                p.Position += p.Velocity * TimeStep;
             }
         }
 
-        
+
 
         public float TotalMass()
         {
@@ -218,12 +221,12 @@ namespace Physics
             foreach (var p in Points) m += p.Mass;
             return m;
         }
-      
+
         public void WakeUp()
         {
-            IsSleeping = false;
+            // IsSleeping = false;
             recentCOMPositions.Clear();
-            
+
         }
 
 
@@ -280,8 +283,10 @@ namespace Physics
                 float r2 = (p.Position - com).sqrMagnitude;
                 inertia += p.Mass * r2;
             }
+
             return inertia;
         }
+
         private Vector3 ComputeCenterOfMass()
         {
             Vector3 sum = Vector3.zero;
@@ -292,6 +297,7 @@ namespace Physics
                 sum += p.Position * p.Mass;
                 totalMass += p.Mass;
             }
+
             return (totalMass > 0f) ? sum / totalMass : transform.position;
         }
 
@@ -308,11 +314,11 @@ namespace Physics
             {
                 var p = Points[i];
                 if (p.IsFixed) continue;
-                Vector3 r     = p.Position - com;
-                p.Position    = com + dq * r;
+                Vector3 r = p.Position - com;
+                p.Position = com + dq * r;
                 Vector3 prevR = _prevPositions[i] - com;
                 _prevPositions[i] = com + dq * prevR;
-                p.Velocity    = dq * p.Velocity;
+                p.Velocity = dq * p.Velocity;
             }
         }
 
@@ -325,6 +331,7 @@ namespace Physics
                 sum += p.Position * p.Mass;
                 total += p.Mass;
             }
+
             return total > 0f ? sum / total : Vector3.zero;
         }
 
@@ -337,8 +344,10 @@ namespace Physics
                 Vector3 r = p.Position - com;
                 I += p.Mass * r.sqrMagnitude;
             }
+
             return I;
         }
+
         private List<MassPoint> GetSurfacePoints()
         {
             return Points.Where(p => p.IsSurface).ToList();
@@ -408,3 +417,4 @@ namespace Physics
 #endif
     }
 }
+
