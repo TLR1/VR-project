@@ -27,6 +27,7 @@ namespace Physics
 
         private List<Vector3> _prevPositions;
         private MeshFilter    _mf;
+        private Mesh          _dynamicMesh;
         private Vector3[]     _baseVertices;
         private MeshFilter _meshFilter;
         private Mesh _dynamicMesh;
@@ -121,6 +122,9 @@ namespace Physics
             _inertia = ComputeMomentOfInertia();
         }
        
+
+            return kinetic + springEnergy;
+        }
 
         private void FixedUpdate()
         {
