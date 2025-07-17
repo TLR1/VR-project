@@ -5,6 +5,11 @@ using Physics.Materials;
 
 namespace Physics
 {
+    /// <summary>
+    /// يدير كشف الاصطدام (GJK + EPA)، تصحيح المواقع،
+    /// وتطبيق اندفاع موزّع على Mass–Spring bodies.
+    /// بالإضافة إلى رسم نقطة التماس بصريًّا.
+    /// </summary>
     public class CollisionSolver : MonoBehaviour
     {
         private const float jMax = 10f;
