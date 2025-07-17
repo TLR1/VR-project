@@ -14,6 +14,10 @@ namespace Physics
             Euler
         }
 
+        public Material lineMaterial; // Assign an Unlit/Color material in Inspector
+
+        private Physics.MassSpringBody body;
+
         [Header("Particles & Springs")] public List<MassPoint> Points = new List<MassPoint>();
         public List<SpringLink> Springs = new List<SpringLink>();
 
@@ -83,26 +87,99 @@ namespace Physics
         private float _inertia;
         private Vector3 _angularVelocity = Vector3.zero;
 
+     
+
+        private static Material CreateGLMaterial()
+        {
+            string shaderCode = @"
+Shader ""Hidden/Internal-Colored""
+{
+    SubShader
+    {
+        Tags { ""RenderType""=""Opaque"" }
+        Pass
+        {
+            ZWrite Off Cull Off Fog { Mode Off }
+            Blend SrcAlpha OneMinusSrcAlpha
+
+            BindChannels {
+                Bind ""vertex"", vertex
+                Bind ""color"", color
+            }
+        }
+    }
+}";
+
+            Shader shader = Shader.Find("Hidden/Internal-Colored");
+            if (shader == null)
+            {
+                Debug.LogError("Shader 'Hidden/Internal-Colored' not found!");
+                return null;
+            }
+
+            return new Material(shader);
+        }
+
         private void Awake()
         {
-            _meshFilter = GetComponent<MeshFilter>();
+            body = GetComponent<Physics.MassSpringBody>();
 
-            if (_meshFilter.sharedMesh == null)
+            _mf = GetComponent<MeshFilter>();
+            if (_mf.sharedMesh != null)
             {
-                _dynamicMesh = new Mesh();
-                _meshFilter.mesh = _dynamicMesh;
-                InitializeMesh();
+                _dynamicMesh = Instantiate(_mf.sharedMesh);
+                _mf.mesh = _dynamicMesh;
+                _baseVertices = _dynamicMesh.vertices;
             }
-            else
-            {
-                _dynamicMesh = Instantiate(_meshFilter.sharedMesh);
-                _meshFilter.mesh = _dynamicMesh;
-            }
+        }
 
+        private void OnRenderObject()
+        {
+            if (lineMaterial == null || body == null || body.Springs == null || body.Points == null)
+                return;
+
+            lineMaterial.SetPass(0);
+            GL.PushMatrix();
+
+            // --- Draw Springs (Cyan Lines) ---
+            GL.Begin(GL.LINES);
+            GL.Color(Color.cyan);
+            foreach (var s in body.Springs)
+            {
+                GL.Vertex(s.PointA.Position);
+                GL.Vertex(s.PointB.Position);
+            }
+            GL.End();
+
+            // --- Draw Points (Red Crosses) ---
+            GL.Begin(GL.LINES);
+            GL.Color(Color.red);
+            float size = 0.02f;
+            foreach (var p in body.Points)
+            {
+                Vector3 pos = p.Position;
+
+                GL.Vertex(pos + Vector3.left * size);
+                GL.Vertex(pos + Vector3.right * size);
+
+                GL.Vertex(pos + Vector3.up * size);
+                GL.Vertex(pos + Vector3.down * size);
+
+                GL.Vertex(pos + Vector3.forward * size);
+                GL.Vertex(pos + Vector3.back * size);
+            }
+            GL.End();
+
+            GL.PopMatrix();
         }
 
         private void Start()
         {
+            if (lineMaterial == null)
+            {
+                lineMaterial = CreateGLMaterial();
+            }
+
             _prevPositions = new List<Vector3>(Points.Count);
             foreach (var p in Points)
                 _prevPositions.Add(p.Position);
